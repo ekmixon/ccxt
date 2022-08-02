@@ -11,7 +11,7 @@ files = [
 ]
 
 for file in files:
-    with open(file + '.md', 'r') as f:
+    with open(f'{file}.md', 'r') as f:
         contents = f.read()
 
     # .md parsing stage
@@ -35,5 +35,5 @@ for file in files:
     # fix_table = re.sub(r' {5}\n\n\n', '     -\n\n\n', fix_list)
     basename = os.path.basename(file)
     lowername = basename.lower()
-    with open('./doc/' + lowername + '.rst', 'w') as f:
+    with open(f'./doc/{lowername}.rst', 'w') as f:
         f.write(fix_list)

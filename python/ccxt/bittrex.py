@@ -277,14 +277,14 @@ class bittrex(Exchange):
         #     ]
         #
         result = []
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             market = response[i]
             baseId = self.safe_string(market, 'baseCurrencySymbol')
             quoteId = self.safe_string(market, 'quoteCurrencySymbol')
             id = self.safe_string(market, 'symbol')
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = base + '/' + quote
+            symbol = f'{base}/{quote}'
             pricePrecision = self.safe_integer(market, 'precision', 8)
             precision = {
                 'amount': 8,
@@ -325,8 +325,8 @@ class bittrex(Exchange):
         result = {'info': balances}
         indexed = self.index_by(balances, 'currencySymbol')
         currencyIds = list(indexed.keys())
-        for i in range(0, len(currencyIds)):
-            currencyId = currencyIds[i]
+        for currencyId_ in currencyIds:
+            currencyId = currencyId_
             code = self.safe_currency_code(currencyId)
             account = self.account()
             balance = indexed[currencyId]
@@ -341,8 +341,11 @@ class bittrex(Exchange):
             'marketSymbol': self.market_id(symbol),
         }
         if limit is not None:
-            if (limit != 1) and (limit != 25) and (limit != 500):
-                raise BadRequest(self.id + ' fetchOrderBook() limit argument must be None, 1, 25 or 500, default is 25')
+            if limit not in [1, 25, 500]:
+                raise BadRequest(
+                    f'{self.id} fetchOrderBook() limit argument must be None, 1, 25 or 500, default is 25'
+                )
+
             request['depth'] = limit
         response = self.publicGetMarketsMarketSymbolOrderbook(self.extend(request, params))
         #
@@ -384,7 +387,7 @@ class bittrex(Exchange):
         #     ]
         #
         result = {}
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             currency = response[i]
             id = self.safe_string(currency, 'symbol')
             code = self.safe_currency_code(id)
@@ -499,7 +502,7 @@ class bittrex(Exchange):
         #     ]
         #
         tickers = []
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             ticker = self.parse_ticker(response[i])
             tickers.append(ticker)
         return self.filter_by_array(tickers, 'symbol', symbols)
@@ -682,13 +685,11 @@ class bittrex(Exchange):
                     method = 'publicGetMarketsMarketSymbolCandlesCandleIntervalHistoricalYearMonth'
                     request['year'] = sinceYear
                     request['month'] = sinceMonth
-            else:
-                # if the since argument is beyond 1 day into the past
-                if difference > 86400000:
-                    method = 'publicGetMarketsMarketSymbolCandlesCandleIntervalHistoricalYearMonthDay'
-                    request['year'] = sinceYear
-                    request['month'] = sinceMonth
-                    request['day'] = sinceDay
+            elif difference > 86400000:
+                method = 'publicGetMarketsMarketSymbolCandlesCandleIntervalHistoricalYearMonthDay'
+                request['year'] = sinceYear
+                request['month'] = sinceMonth
+                request['day'] = sinceDay
         response = getattr(self, method)(self.extend(request, params))
         #
         #     [
@@ -715,9 +716,7 @@ class bittrex(Exchange):
             'orderId': id,
         }
         response = self.privateGetOrdersOrderIdExecutions(self.extend(request, params))
-        market = None
-        if symbol is not None:
-            market = self.market(symbol)
+        market = self.market(symbol) if symbol is not None else None
         return self.parse_trades(response, market, since, limit)
 
     def create_order(self, symbol, type, side, amount, price=None, params={}):
@@ -750,10 +749,7 @@ class bittrex(Exchange):
             elif isCeilingMarket:
                 cost = self.safe_number_2(params, 'ceiling', 'cost')
                 if cost is None:
-                    if price is None:
-                        cost = amount
-                    else:
-                        cost = amount * price
+                    cost = amount if price is None else amount * price
             params = self.omit(params, ['ceiling', 'cost'])
             request['ceiling'] = self.cost_to_precision(symbol, cost)
             # bittrex only accepts IMMEDIATE_OR_CANCEL or FILL_OR_KILL for ceiling orders
@@ -831,7 +827,7 @@ class bittrex(Exchange):
         #     ]
         #
         orders = []
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             result = self.safe_value(response[i], 'result', {})
             orders.append(result)
         return self.parse_orders(orders, market)
@@ -898,7 +894,7 @@ class bittrex(Exchange):
         txid = self.safe_string(transaction, 'txId')
         updated = self.parse8601(self.safe_string(transaction, 'updatedAt'))
         opened = self.parse8601(self.safe_string(transaction, 'createdAt'))
-        timestamp = opened if opened else updated
+        timestamp = opened or updated
         type = 'deposit' if (opened is None) else 'withdrawal'
         currencyId = self.safe_string(transaction, 'currencySymbol')
         code = self.safe_currency_code(currencyId, currency)
@@ -923,15 +919,16 @@ class bittrex(Exchange):
                 status = 'canceled'
             elif responseStatus == 'PENDING':
                 status = 'pending'
-            elif responseStatus == 'COMPLETED':
-                status = 'ok'
-            elif responseStatus == 'AUTHORIZED' and (txid is not None):
+            elif (
+                responseStatus == 'COMPLETED'
+                or responseStatus == 'AUTHORIZED'
+                and txid is not None
+            ):
                 status = 'ok'
         feeCost = self.safe_number(transaction, 'txCost')
-        if feeCost is None:
-            if type == 'deposit':
-                # according to https://support.bittrex.com/hc/en-us/articles/115000199651-What-fees-does-Bittrex-charge-
-                feeCost = 0
+        if feeCost is None and type == 'deposit':
+            # according to https://support.bittrex.com/hc/en-us/articles/115000199651-What-fees-does-Bittrex-charge-
+            feeCost = 0
         return {
             'info': transaction,
             'id': id,
@@ -1058,7 +1055,7 @@ class bittrex(Exchange):
             if self.last_json_response:
                 message = self.safe_string(self.last_json_response, 'message')
                 if message == 'UUID_INVALID':
-                    raise OrderNotFound(self.id + ' fetchOrder() error: ' + self.last_http_response)
+                    raise OrderNotFound(f'{self.id} fetchOrder() error: {self.last_http_response}')
             raise e
         return self.parse_order(response)
 
@@ -1082,11 +1079,7 @@ class bittrex(Exchange):
         }
 
     def orders_to_trades(self, orders):
-        # self entire method should be moved to the base class
-        result = []
-        for i in range(0, len(orders)):
-            result.append(self.order_to_trade(orders[i]))
-        return result
+        return [self.order_to_trade(orders[i]) for i in range(len(orders))]
 
     def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         self.load_markets()
@@ -1150,7 +1143,10 @@ class bittrex(Exchange):
         address = self.safe_string(response, 'cryptoAddress')
         message = self.safe_string(response, 'status')
         if not address or message == 'REQUESTED':
-            raise AddressPending(self.id + ' the address for ' + code + ' is being generated(pending, not ready yet, retry again later)')
+            raise AddressPending(
+                f'{self.id} the address for {code} is being generated(pending, not ready yet, retry again later)'
+            )
+
         tag = self.safe_string(response, 'cryptoAddressTag')
         if (tag is None) and (currency['type'] in self.options['tag']):
             tag = address
@@ -1181,7 +1177,10 @@ class bittrex(Exchange):
         address = self.safe_string(response, 'cryptoAddress')
         message = self.safe_string(response, 'status')
         if not address or message == 'REQUESTED':
-            raise AddressPending(self.id + ' the address for ' + code + ' is being generated(pending, not ready yet, retry again later)')
+            raise AddressPending(
+                f'{self.id} the address for {code} is being generated(pending, not ready yet, retry again later)'
+            )
+
         tag = self.safe_string(response, 'cryptoAddressTag')
         if (tag is None) and (currency['type'] in self.options['tag']):
             tag = address
@@ -1218,7 +1217,7 @@ class bittrex(Exchange):
             'hostname': self.hostname,
         }) + '/'
         if api == 'private':
-            url += self.version + '/'
+            url += f'{self.version}/'
             self.check_required_credentials()
             url += self.implode_params(path, params)
             params = self.omit(params, self.extract_params(path))
@@ -1226,9 +1225,8 @@ class bittrex(Exchange):
             if method == 'POST':
                 body = self.json(params)
                 hashString = body
-            else:
-                if params:
-                    url += '?' + self.rawencode(params)
+            elif params:
+                url += f'?{self.rawencode(params)}'
             contentHash = self.hash(self.encode(hashString), 'sha512', 'hex')
             timestamp = str(self.milliseconds())
             auth = timestamp + url + method + contentHash
@@ -1248,11 +1246,10 @@ class bittrex(Exchange):
                 headers['Content-Type'] = 'application/json'
         else:
             if api == 'public':
-                url += self.version + '/'
+                url += f'{self.version}/'
             url += self.implode_params(path, params)
-            params = self.omit(params, self.extract_params(path))
-            if params:
-                url += '?' + self.urlencode(params)
+            if params := self.omit(params, self.extract_params(path)):
+                url += f'?{self.urlencode(params)}'
         return {'url': url, 'method': method, 'body': body, 'headers': headers}
 
     def handle_errors(self, code, reason, url, method, headers, body, response, requestHeaders, requestBody):
@@ -1262,7 +1259,7 @@ class bittrex(Exchange):
         #     {success: False, message: "message"}
         #
         if body[0] == '{':
-            feedback = self.id + ' ' + body
+            feedback = f'{self.id} {body}'
             success = self.safe_value(response, 'success')
             if success is None:
                 code = self.safe_string(response, 'code')
@@ -1304,16 +1301,16 @@ class bittrex(Exchange):
                             params = query.split('&')
                             numParams = len(params)
                             orderId = None
-                            for i in range(0, numParams):
+                            for i in range(numParams):
                                 param = params[i]
                                 keyValue = param.split('=')
                                 if keyValue[0] == 'uuid':
                                     orderId = keyValue[1]
                                     break
                             if orderId is not None:
-                                raise OrderNotFound(self.id + ' cancelOrder ' + orderId + ' ' + self.json(response))
+                                raise OrderNotFound(f'{self.id} cancelOrder {orderId} {self.json(response)}')
                             else:
-                                raise OrderNotFound(self.id + ' cancelOrder ' + self.json(response))
+                                raise OrderNotFound(f'{self.id} cancelOrder {self.json(response)}')
                 self.throw_exactly_matched_exception(self.exceptions['exact'], message, feedback)
                 if message is not None:
                     self.throw_broadly_matched_exception(self.exceptions['broad'], message, feedback)

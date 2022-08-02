@@ -195,14 +195,14 @@ class aofex(Exchange):
         precisions = self.safe_value(precisions, 'result', {})
         markets = self.safe_value(markets, 'result', [])
         result = []
-        for i in range(0, len(markets)):
+        for i in range(len(markets)):
             market = markets[i]
             id = self.safe_string(market, 'symbol')
             baseId = self.safe_string(market, 'base_currency')
             quoteId = self.safe_string(market, 'quote_currency')
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = base + '/' + quote
+            symbol = f'{base}/{quote}'
             numericId = self.safe_integer(market, 'id')
             precision = self.safe_value(precisions, id, {})
             makerFeeString = self.safe_string(market, 'maker_fee')
@@ -336,7 +336,7 @@ class aofex(Exchange):
             'datetime': None,
         }
         balances = self.safe_value(response, 'result', [])
-        for i in range(0, len(balances)):
+        for i in range(len(balances)):
             balance = balances[i]
             currencyId = self.safe_string(balance, 'currency')
             code = self.safe_currency_code(currencyId)
@@ -475,7 +475,7 @@ class aofex(Exchange):
         #
         tickers = self.safe_value(response, 'result', [])
         result = {}
-        for i in range(0, len(tickers)):
+        for i in range(len(tickers)):
             marketId = self.safe_string(tickers[i], 'symbol')
             market = self.safe_market(marketId, None, '-')
             symbol = market['symbol']
@@ -696,13 +696,10 @@ class aofex(Exchange):
             price = self.safe_number(order, 'price')
         else:
             average = self.safe_number(order, 'deal_price')
-            if side == 'buy':
-                amount = self.safe_number(order, 'deal_number')
-            else:
-                amount = number
+            amount = self.safe_number(order, 'deal_number') if side == 'buy' else number
         # all orders except new orders and canceled orders
         rawTrades = self.safe_value(order, 'trades', [])
-        for i in range(0, len(rawTrades)):
+        for i in range(len(rawTrades)):
             rawTrades[i]['direction'] = side
         trades = self.parse_trades(rawTrades, market, None, None, {
             'symbol': market['symbol'],
@@ -713,9 +710,7 @@ class aofex(Exchange):
             cost = totalPrice
         elif side == 'buy':
             cost = number
-        filled = None
-        if (type == 'limit') and (orderStatus == '3'):
-            filled = amount
+        filled = amount if (type == 'limit') and (orderStatus == '3') else None
         return self.safe_order({
             'info': order,
             'id': id,
@@ -833,7 +828,7 @@ class aofex(Exchange):
     def create_order(self, symbol, type, side, amount, price=None, params={}):
         self.load_markets()
         market = self.market(symbol)
-        orderType = side + '-' + type
+        orderType = f'{side}-{type}'
         request = {
             'symbol': market['id'],
             'type': orderType,
@@ -894,7 +889,10 @@ class aofex(Exchange):
         result = self.safe_value(response, 'result', {})
         success = self.safe_value(result, 'success', [])
         if not self.in_array(id, success):
-            raise OrderNotFound(self.id + ' order id ' + id + ' not found in successfully canceled orders: ' + self.json(response))
+            raise OrderNotFound(
+                f'{self.id} order id {id} not found in successfully canceled orders: {self.json(response)}'
+            )
+
         timestamp = None
         return {
             'info': response,
@@ -919,13 +917,15 @@ class aofex(Exchange):
 
     def cancel_all_orders(self, symbol=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' cancelAllOrders() requires a symbol argument')
+            raise ArgumentsRequired(
+                f'{self.id} cancelAllOrders() requires a symbol argument'
+            )
+
         self.load_markets()
         market = self.market(symbol)
         request = {
             'symbol': market['id'],
         }
-        response = self.privatePostEntrustCancel(self.extend(request, params))
         #
         #     {
         #         "errno": 0,
@@ -936,7 +936,7 @@ class aofex(Exchange):
         #         }
         #     }
         #
-        return response
+        return self.privatePostEntrustCancel(self.extend(request, params))
 
     def nonce(self):
         return self.milliseconds()
@@ -947,24 +947,26 @@ class aofex(Exchange):
         keysLength = len(keys)
         if api == 'public':
             if keysLength > 0:
-                url += '?' + self.urlencode(params)
+                url += f'?{self.urlencode(params)}'
         else:
             nonce = str(self.nonce())
             uuid = self.uuid()
-            randomString = uuid[0:5]
-            nonceString = nonce + '_' + randomString
-            auth = {}
-            auth[self.apiKey] = self.apiKey
-            auth[self.secret] = self.secret
-            auth[nonceString] = nonceString
-            for i in range(0, keysLength):
+            randomString = uuid[:5]
+            nonceString = f'{nonce}_{randomString}'
+            auth = {
+                self.apiKey: self.apiKey,
+                self.secret: self.secret,
+                nonceString: nonceString,
+            }
+
+            for i in range(keysLength):
                 key = keys[i]
-                auth[key] = key + '=' + params[key]
+                auth[key] = f'{key}={params[key]}'
             keysorted = self.keysort(auth)
             stringToSign = ''
             keys = list(keysorted.keys())
-            for i in range(0, len(keys)):
-                key = keys[i]
+            for key_ in keys:
+                key = key_
                 stringToSign += keysorted[key]
             signature = self.hash(self.encode(stringToSign), 'sha1')
             headers = {
@@ -976,9 +978,8 @@ class aofex(Exchange):
                 headers['Content-Type'] = 'application/x-www-form-urlencoded'
                 if keysLength > 0:
                     body = self.urlencode(params)
-            else:
-                if keysLength > 0:
-                    url += '?' + self.urlencode(params)
+            elif keysLength > 0:
+                url += f'?{self.urlencode(params)}'
         return {'url': url, 'method': method, 'body': body, 'headers': headers}
 
     def handle_errors(self, code, reason, url, method, headers, body, response, requestHeaders, requestBody):
@@ -990,7 +991,7 @@ class aofex(Exchange):
         error = self.safe_string(response, 'errno')
         if (error is not None) and (error != '0'):
             message = self.safe_string(response, 'errmsg')
-            feedback = self.id + ' ' + body
+            feedback = f'{self.id} {body}'
             self.throw_exactly_matched_exception(self.exceptions['exact'], error, feedback)
             self.throw_broadly_matched_exception(self.exceptions['broad'], message, feedback)
             raise ExchangeError(feedback)  # unknown message

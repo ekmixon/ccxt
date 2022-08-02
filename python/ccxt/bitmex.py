@@ -195,7 +195,7 @@ class bitmex(Exchange):
     def fetch_markets(self, params={}):
         response = self.publicGetInstrumentActiveAndIndices(params)
         result = []
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             market = response[i]
             active = (market['state'] != 'Unlisted')
             id = market['symbol']
@@ -215,7 +215,7 @@ class bitmex(Exchange):
             symbol = id
             if swap:
                 type = 'swap'
-                symbol = base + '/' + quote
+                symbol = f'{base}/{quote}'
             elif id.find('B_') >= 0:
                 prediction = True
                 type = 'prediction'
@@ -321,7 +321,7 @@ class bitmex(Exchange):
         #     ]
         #
         result = {'info': response}
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             balance = response[i]
             currencyId = self.safe_string(balance, 'currency')
             code = self.safe_currency_code(currencyId)
@@ -408,7 +408,7 @@ class bitmex(Exchange):
             'datetime': None,
             'nonce': None,
         }
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             order = response[i]
             side = 'asks' if (order['side'] == 'Sell') else 'bids'
             amount = self.safe_number(order, 'size')
@@ -432,7 +432,7 @@ class bitmex(Exchange):
         numResults = len(response)
         if numResults == 1:
             return response[0]
-        raise OrderNotFound(self.id + ': The order ' + id + ' not found.')
+        raise OrderNotFound(f'{self.id}: The order {id} not found.')
 
     def fetch_orders(self, symbol=None, since=None, limit=None, params={}):
         self.load_markets()
@@ -647,9 +647,7 @@ class bitmex(Exchange):
 
     def fetch_ledger(self, code=None, since=None, limit=None, params={}):
         self.load_markets()
-        currency = None
-        if code is not None:
-            currency = self.currency(code)
+        currency = self.currency(code) if code is not None else None
         request = {
             # 'start': 123,
         }
@@ -697,9 +695,7 @@ class bitmex(Exchange):
             request['count'] = limit
         response = self.privateGetUserWalletHistory(self.extend(request, params))
         transactions = self.filter_by_array(response, 'transactType', ['Withdrawal', 'Deposit'], False)
-        currency = None
-        if code is not None:
-            currency = self.currency(code)
+        currency = self.currency(code) if code is not None else None
         return self.parse_transactions(transactions, currency, since, limit)
 
     def parse_transaction_status(self, status):
@@ -780,18 +776,18 @@ class bitmex(Exchange):
         self.load_markets()
         market = self.market(symbol)
         if not market['active']:
-            raise ExchangeError(self.id + ': symbol ' + symbol + ' is delisted')
+            raise ExchangeError(f'{self.id}: symbol {symbol} is delisted')
         tickers = self.fetch_tickers([symbol], params)
         ticker = self.safe_value(tickers, symbol)
         if ticker is None:
-            raise ExchangeError(self.id + ' ticker symbol ' + symbol + ' not found')
+            raise ExchangeError(f'{self.id} ticker symbol {symbol} not found')
         return ticker
 
     def fetch_tickers(self, symbols=None, params={}):
         self.load_markets()
         response = self.publicGetInstrumentActiveAndIndices(params)
         result = {}
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             ticker = self.parse_ticker(response[i])
             symbol = self.safe_string(ticker, 'symbol')
             if symbol is not None:
@@ -1005,7 +1001,7 @@ class bitmex(Exchange):
             # bitmex returns the candle's close timestamp - https://github.com/ccxt/ccxt/issues/4446
             # we can emulate the open timestamp by shifting all the timestamps one place
             # so the previous close becomes the current open, and we drop the first candle
-            for i in range(0, len(result)):
+            for i in range(len(result)):
                 result[i][0] = result[i][0] - duration
         return result
 
@@ -1281,14 +1277,16 @@ class bitmex(Exchange):
             'orderQty': float(self.amount_to_precision(symbol, amount)),
             'ordType': orderType,
         }
-        if (orderType == 'Stop') or (orderType == 'StopLimit') or (orderType == 'MarketIfTouched') or (orderType == 'LimitIfTouched'):
+        if orderType in ['Stop', 'StopLimit', 'MarketIfTouched', 'LimitIfTouched']:
             stopPrice = self.safe_number_2(params, 'stopPx', 'stopPrice')
             if stopPrice is None:
-                raise ArgumentsRequired(self.id + ' createOrder() requires a stopPx or stopPrice parameter for the ' + orderType + ' order type')
-            else:
-                request['stopPx'] = float(self.price_to_precision(symbol, stopPrice))
-                params = self.omit(params, ['stopPx', 'stopPrice'])
-        if (orderType == 'Limit') or (orderType == 'StopLimit') or (orderType == 'LimitIfTouched'):
+                raise ArgumentsRequired(
+                    f'{self.id} createOrder() requires a stopPx or stopPrice parameter for the {orderType} order type'
+                )
+
+            request['stopPx'] = float(self.price_to_precision(symbol, stopPrice))
+            params = self.omit(params, ['stopPx', 'stopPrice'])
+        if orderType in ['Limit', 'StopLimit', 'LimitIfTouched']:
             request['price'] = float(self.price_to_precision(symbol, price))
         clientOrderId = self.safe_string_2(params, 'clOrdID', 'clientOrderId')
         if clientOrderId is not None:
@@ -1329,9 +1327,11 @@ class bitmex(Exchange):
         response = self.privateDeleteOrder(self.extend(request, params))
         order = self.safe_value(response, 0, {})
         error = self.safe_string(order, 'error')
-        if error is not None:
-            if error.find('Unable to cancel order due to existing state') >= 0:
-                raise OrderNotFound(self.id + ' cancelOrder() failed: ' + error)
+        if (
+            error is not None
+            and error.find('Unable to cancel order due to existing state') >= 0
+        ):
+            raise OrderNotFound(f'{self.id} cancelOrder() failed: {error}')
         return self.parse_order(order)
 
     def cancel_all_orders(self, symbol=None, params={}):
@@ -1385,7 +1385,6 @@ class bitmex(Exchange):
 
     def fetch_positions(self, symbols=None, params={}):
         self.load_markets()
-        response = self.privateGetPosition(params)
         #     [
         #         {
         #             "account": 0,
@@ -1483,14 +1482,10 @@ class bitmex(Exchange):
         #     ]
         #
         # todo unify parsePosition/parsePositions
-        return response
+        return self.privateGetPosition(params)
 
     def is_fiat(self, currency):
-        if currency == 'EUR':
-            return True
-        if currency == 'PLN':
-            return True
-        return False
+        return True if currency == 'EUR' else currency == 'PLN'
 
     def withdraw(self, code, amount, address, tag=None, params={}):
         tag, params = self.handle_withdraw_tag_and_params(tag, params)
@@ -1498,7 +1493,10 @@ class bitmex(Exchange):
         self.load_markets()
         # currency = self.currency(code)
         if code != 'BTC':
-            raise ExchangeError(self.id + ' supoprts BTC withdrawals only, other currencies coming soon...')
+            raise ExchangeError(
+                f'{self.id} supoprts BTC withdrawals only, other currencies coming soon...'
+            )
+
         request = {
             'currency': 'XBt',  # temporarily
             'amount': amount,
@@ -1516,11 +1514,11 @@ class bitmex(Exchange):
         if response is None:
             return
         if code == 429:
-            raise DDoSProtection(self.id + ' ' + body)
+            raise DDoSProtection(f'{self.id} {body}')
         if code >= 400:
             error = self.safe_value(response, 'error', {})
             message = self.safe_string(error, 'message')
-            feedback = self.id + ' ' + body
+            feedback = f'{self.id} {body}'
             self.throw_exactly_matched_exception(self.exceptions['exact'], message, feedback)
             self.throw_broadly_matched_exception(self.exceptions['broad'], message, feedback)
             if code == 400:
@@ -1531,10 +1529,10 @@ class bitmex(Exchange):
         return self.milliseconds()
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
-        query = '/api/' + self.version + '/' + path
+        query = f'/api/{self.version}/{path}'
         if method == 'GET':
             if params:
-                query += '?' + self.urlencode(params)
+                query += f'?{self.urlencode(params)}'
         else:
             format = self.safe_string(params, '_format')
             if format is not None:
@@ -1552,9 +1550,8 @@ class bitmex(Exchange):
             expires = str(expires)
             auth += expires
             headers['api-expires'] = expires
-            if method == 'POST' or method == 'PUT' or method == 'DELETE':
-                if params:
-                    body = self.json(params)
-                    auth += body
+            if method in ['POST', 'PUT', 'DELETE'] and params:
+                body = self.json(params)
+                auth += body
             headers['api-signature'] = self.hmac(self.encode(auth), self.encode(self.secret))
         return {'url': url, 'method': method, 'body': body, 'headers': headers}

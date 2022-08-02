@@ -100,14 +100,14 @@ class btcalpha(Exchange):
     def fetch_markets(self, params={}):
         response = self.publicGetPairs(params)
         result = []
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             market = response[i]
             id = self.safe_string(market, 'name')
             baseId = self.safe_string(market, 'currency1')
             quoteId = self.safe_string(market, 'currency2')
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = base + '/' + quote
+            symbol = f'{base}/{quote}'
             pricePrecision = self.safe_string(market, 'price_precision')
             priceLimit = self.parse_precision(pricePrecision)
             precision = {
@@ -155,18 +155,15 @@ class btcalpha(Exchange):
 
     def parse_bids_asks(self, bidasks, priceKey=0, amountKey=1):
         result = []
-        for i in range(0, len(bidasks)):
-            bidask = bidasks[i]
-            if bidask:
+        for i in range(len(bidasks)):
+            if bidask := bidasks[i]:
                 result.append(self.parse_bid_ask(bidask, priceKey, amountKey))
         return result
 
     def parse_trade(self, trade, market=None):
-        symbol = None
         if market is None:
             market = self.safe_value(self.markets_by_id, trade['pair'])
-        if market is not None:
-            symbol = market['symbol']
+        symbol = market['symbol'] if market is not None else None
         timestamp = self.safe_timestamp(trade, 'timestamp')
         priceString = self.safe_string(trade, 'price')
         amountString = self.safe_string(trade, 'amount')
@@ -249,7 +246,7 @@ class btcalpha(Exchange):
         self.load_markets()
         response = self.privateGetWallets(params)
         result = {'info': response}
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             balance = response[i]
             currencyId = self.safe_string(balance, 'currency')
             code = self.safe_currency_code(currencyId)
@@ -268,11 +265,9 @@ class btcalpha(Exchange):
         return self.safe_string(statuses, status, status)
 
     def parse_order(self, order, market=None):
-        symbol = None
         if market is None:
             market = self.safe_value(self.markets_by_id, order['pair'])
-        if market is not None:
-            symbol = market['symbol']
+        symbol = market['symbol'] if market is not None else None
         timestamp = self.safe_timestamp(order, 'date')
         price = self.safe_number(order, 'price')
         amount = self.safe_number(order, 'amount')
@@ -285,7 +280,7 @@ class btcalpha(Exchange):
         numTrades = len(trades)
         if numTrades > 0:
             filled = 0.0
-            for i in range(0, numTrades):
+            for i in range(numTrades):
                 filled = self.sum(filled, trades[i]['amount'])
         remaining = None
         if (amount is not None) and (amount > 0) and (filled is not None):
@@ -325,7 +320,7 @@ class btcalpha(Exchange):
         }
         response = self.privatePostOrder(self.extend(request, params))
         if not response['success']:
-            raise InvalidOrder(self.id + ' ' + self.json(response))
+            raise InvalidOrder(f'{self.id} {self.json(response)}')
         order = self.parse_order(response, market)
         amount = order['amount'] if (order['amount'] > 0) else amount
         return self.extend(order, {
@@ -336,8 +331,7 @@ class btcalpha(Exchange):
         request = {
             'order': id,
         }
-        response = self.privatePostOrderCancel(self.extend(request, params))
-        return response
+        return self.privatePostOrderCancel(self.extend(request, params))
 
     def fetch_order(self, id, symbol=None, params={}):
         self.load_markets()
@@ -394,7 +388,7 @@ class btcalpha(Exchange):
         headers = {'Accept': 'application/json'}
         if api == 'public':
             if len(query):
-                url += '?' + query
+                url += f'?{query}'
         else:
             self.check_required_credentials()
             payload = self.apiKey
@@ -403,7 +397,7 @@ class btcalpha(Exchange):
                 body = query
                 payload += body
             elif len(query):
-                url += '?' + query
+                url += f'?{query}'
             headers['X-KEY'] = self.apiKey
             headers['X-SIGN'] = self.hmac(self.encode(payload), self.encode(self.secret))
             headers['X-NONCE'] = str(self.nonce())
@@ -416,11 +410,11 @@ class btcalpha(Exchange):
         #     {"date":1570599531.4814300537,"error":"Out of balance -9.99243661 BTC"}
         #
         error = self.safe_string(response, 'error')
-        feedback = self.id + ' ' + body
+        feedback = f'{self.id} {body}'
         if error is not None:
             self.throw_exactly_matched_exception(self.exceptions['exact'], error, feedback)
             self.throw_broadly_matched_exception(self.exceptions['broad'], error, feedback)
-        if code == 401 or code == 403:
+        if code in [401, 403]:
             raise AuthenticationError(feedback)
         elif code == 429:
             raise DDoSProtection(feedback)

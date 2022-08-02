@@ -75,8 +75,8 @@ class bl3p(Exchange):
         wallets = self.safe_value(data, 'wallets')
         result = {'info': data}
         codes = list(self.currencies.keys())
-        for i in range(0, len(codes)):
-            code = codes[i]
+        for code_ in codes:
+            code = code_
             currency = self.currency(code)
             currencyId = currency['id']
             wallet = self.safe_value(wallets, currencyId, {})
@@ -145,9 +145,7 @@ class bl3p(Exchange):
         price = self.parse_number(priceString)
         amount = self.parse_number(amountString)
         cost = self.parse_number(Precise.string_mul(priceString, amountString))
-        symbol = None
-        if market is not None:
-            symbol = market['symbol']
+        symbol = market['symbol'] if market is not None else None
         return {
             'id': id,
             'info': trade,
@@ -169,8 +167,7 @@ class bl3p(Exchange):
         response = self.publicGetMarketTrades(self.extend({
             'market': market['id'],
         }, params))
-        result = self.parse_trades(response['data']['trades'], market, since, limit)
-        return result
+        return self.parse_trades(response['data']['trades'], market, since, limit)
 
     def create_order(self, symbol, type, side, amount, price=None, params={}):
         market = self.market(symbol)
@@ -201,7 +198,7 @@ class bl3p(Exchange):
         query = self.omit(params, self.extract_params(path))
         if api == 'public':
             if query:
-                url += '?' + self.urlencode(query)
+                url += f'?{self.urlencode(query)}'
         else:
             self.check_required_credentials()
             nonce = self.nonce()

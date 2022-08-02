@@ -288,14 +288,14 @@ class bitvavo(Exchange):
         #     ]
         #
         result = []
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             market = response[i]
             id = self.safe_string(market, 'market')
             baseId = self.safe_string(market, 'base')
             quoteId = self.safe_string(market, 'quote')
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = base + '/' + quote
+            symbol = f'{base}/{quote}'
             status = self.safe_string(market, 'status')
             active = (status == 'trading')
             baseCurrency = self.safe_value(currenciesById, baseId)
@@ -368,7 +368,7 @@ class bitvavo(Exchange):
         #     ]
         #
         result = {}
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             currency = response[i]
             id = self.safe_string(currency, 'symbol')
             code = self.safe_currency_code(id)
@@ -718,7 +718,7 @@ class bitvavo(Exchange):
             'timestamp': None,
             'datetime': None,
         }
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             balance = response[i]
             currencyId = self.safe_string(balance, 'symbol')
             code = self.safe_currency_code(currencyId)
@@ -767,8 +767,8 @@ class bitvavo(Exchange):
             # 'disableMarketProtection': False,  # don't cancel if the next fill price is 10% worse than the best fill price
             # 'responseRequired': True,  # False is faster
         }
-        isStopLimit = (type == 'stopLossLimit') or (type == 'takeProfitLimit')
-        isStopMarket = (type == 'stopLoss') or (type == 'takeProfit')
+        isStopLimit = type in ['stopLossLimit', 'takeProfitLimit']
+        isStopMarket = type in ['stopLoss', 'takeProfit']
         if type == 'market':
             cost = None
             if price is not None:
@@ -788,12 +788,17 @@ class bitvavo(Exchange):
             stopPrice = self.safe_number_2(params, 'stopPrice', 'triggerAmount')
             if stopPrice is None:
                 if isStopLimit:
-                    raise ArgumentsRequired(self.id + ' createOrder requires a stopPrice parameter for a ' + type + ' order')
-                elif isStopMarket:
-                    if price is None:
-                        raise ArgumentsRequired(self.id + ' createOrder requires a price argument or a stopPrice parameter for a ' + type + ' order')
-                    else:
-                        stopPrice = price
+                    raise ArgumentsRequired(
+                        f'{self.id} createOrder requires a stopPrice parameter for a {type} order'
+                    )
+
+                if price is None:
+                    raise ArgumentsRequired(
+                        f'{self.id} createOrder requires a price argument or a stopPrice parameter for a {type} order'
+                    )
+
+                else:
+                    stopPrice = price
             if isStopLimit:
                 request['price'] = self.price_to_precision(symbol, price)
             params = self.omit(params, ['stopPrice', 'triggerAmount'])
@@ -849,18 +854,19 @@ class bitvavo(Exchange):
             request['amount'] = self.amount_to_precision(symbol, amount)
         if amountRemaining is not None:
             request['amountRemaining'] = self.amount_to_precision(symbol, amountRemaining)
-        request = self.extend(request, params)
-        if request:
+        if request := self.extend(request, params):
             request['orderId'] = id
             request['market'] = market['id']
             response = self.privatePutOrder(self.extend(request, params))
             return self.parse_order(response, market)
         else:
-            raise ArgumentsRequired(self.id + ' editOrder() requires an amount argument, or a price argument, or non-empty params')
+            raise ArgumentsRequired(
+                f'{self.id} editOrder() requires an amount argument, or a price argument, or non-empty params'
+            )
 
     def cancel_order(self, id, symbol=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' cancelOrder() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} cancelOrder() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -894,7 +900,7 @@ class bitvavo(Exchange):
 
     def fetch_order(self, id, symbol=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrder() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} fetchOrder() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -940,7 +946,7 @@ class bitvavo(Exchange):
 
     def fetch_orders(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrders() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} fetchOrders() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -1164,7 +1170,10 @@ class bitvavo(Exchange):
 
     def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchMyTrades() requires a symbol argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchMyTrades() requires a symbol argument'
+            )
+
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -1343,13 +1352,16 @@ class bitvavo(Exchange):
         amount = self.safe_number(transaction, 'amount')
         address = self.safe_string(transaction, 'address')
         txid = self.safe_string(transaction, 'txId')
-        fee = None
         feeCost = self.safe_number(transaction, 'fee')
-        if feeCost is not None:
-            fee = {
+        fee = (
+            {
                 'cost': feeCost,
                 'currency': code,
             }
+            if feeCost is not None
+            else None
+        )
+
         type = None
         if 'success' in transaction:
             type = 'withdrawal'
@@ -1378,18 +1390,16 @@ class bitvavo(Exchange):
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
         query = self.omit(params, self.extract_params(path))
-        url = '/' + self.version + '/' + self.implode_params(path, params)
-        getOrDelete = (method == 'GET') or (method == 'DELETE')
-        if getOrDelete:
-            if query:
-                url += '?' + self.urlencode(query)
+        url = f'/{self.version}/{self.implode_params(path, params)}'
+        getOrDelete = method in ['GET', 'DELETE']
+        if getOrDelete and query:
+            url += f'?{self.urlencode(query)}'
         if api == 'private':
             self.check_required_credentials()
             payload = ''
-            if not getOrDelete:
-                if query:
-                    body = self.json(query)
-                    payload = body
+            if not getOrDelete and query:
+                body = self.json(query)
+                payload = body
             timestamp = str(self.milliseconds())
             auth = timestamp + method + url + payload
             signature = self.hmac(self.encode(auth), self.encode(self.secret))
@@ -1416,12 +1426,12 @@ class bitvavo(Exchange):
         errorCode = self.safe_string(response, 'errorCode')
         error = self.safe_string(response, 'error')
         if errorCode is not None:
-            feedback = self.id + ' ' + body
+            feedback = f'{self.id} {body}'
             self.throw_broadly_matched_exception(self.exceptions['broad'], error, feedback)
             self.throw_exactly_matched_exception(self.exceptions['exact'], errorCode, feedback)
             raise ExchangeError(feedback)  # unknown message
 
     def calculate_rate_limiter_cost(self, api, method, path, params, config={}, context={}):
-        if ('noMarket' in config) and not ('market' in params):
+        if 'noMarket' in config and 'market' not in params:
             return config['noMarket']
         return self.safe_value(config, 'cost', 1)

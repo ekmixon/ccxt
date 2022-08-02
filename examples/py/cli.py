@@ -11,7 +11,7 @@ from pprint import pprint
 # ------------------------------------------------------------------------------
 
 root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.append(root + '/python')
+sys.path.append(f'{root}/python')
 
 # ------------------------------------------------------------------------------
 
@@ -19,11 +19,8 @@ import ccxt  # noqa: E402
 
 # ------------------------------------------------------------------------------
 
-print('Python v' + platform.python_version())
-print('CCXT v' + ccxt.__version__)
-
-# ------------------------------------------------------------------------------
-
+print(f'Python v{platform.python_version()}')
+print(f'CCXT v{ccxt.__version__}')
 
 class Argv(object):
 
@@ -53,8 +50,8 @@ parser.parse_args(namespace=argv)
 
 def table(values):
     first = values[0]
-    keys = list(first.keys()) if isinstance(first, dict) else range(0, len(first))
-    widths = [max([len(str(v[k])) for v in values]) for k in keys]
+    keys = list(first.keys()) if isinstance(first, dict) else range(len(first))
+    widths = [max(len(str(v[k])) for v in values) for k in keys]
     string = ' | '.join(['{:<' + str(w) + '}' for w in widths])
     return "\n".join([string.format(*[str(v[k]) for k in keys]) for v in values])
 
@@ -71,11 +68,15 @@ def print_supported_exchanges():
 def print_usage():
     print('\nThis is an example of a basic command-line interface to all exchanges\n')
     print('Usage:\n')
-    print('python ' + sys.argv[0] + ' exchange_id method "param1" param2 "param3" param4 ...\n')
+    print(
+        f'python {sys.argv[0]}'
+        + ' exchange_id method "param1" param2 "param3" param4 ...\n'
+    )
+
     print('Examples:\n')
-    print('python ' + sys.argv[0] + ' okcoin fetch_ohlcv BTC/USD 15m')
-    print('python ' + sys.argv[0] + ' bitfinex fetch_balance')
-    print('python ' + sys.argv[0] + ' kraken fetch_order_book ETH/BTC\n')
+    print(f'python {sys.argv[0]} okcoin fetch_ohlcv BTC/USD 15m')
+    print(f'python {sys.argv[0]} bitfinex fetch_balance')
+    print(f'python {sys.argv[0]}' + ' kraken fetch_order_book ETH/BTC\n')
     print_supported_exchanges()
 
 
@@ -83,8 +84,8 @@ def print_usage():
 
 
 # prefer local testing keys to global keys
-keys_global = root + '/keys.json'
-keys_local = root + '/keys.local.json'
+keys_global = f'{root}/keys.json'
+keys_local = f'{root}/keys.local.json'
 keys_file = keys_local if os.path.exists(keys_local) else keys_global
 
 # load the api keys and other settings from a JSON config
@@ -109,7 +110,7 @@ if argv.exchange_id not in ccxt.exchanges:
 
 
 if argv.exchange_id in keys:
-    config.update(keys[argv.exchange_id])
+    config |= keys[argv.exchange_id]
 
 exchange = getattr(ccxt, argv.exchange_id)(config)
 
@@ -126,7 +127,7 @@ args = []
 for arg in argv.args:
 
     # unpack json objects (mostly for extra params)
-    if arg[0] == '{' or arg[0] == '[':
+    if arg[0] in ['{', '[']:
         args.append(json.loads(arg))
     elif arg == 'None':
         args.append(None)
@@ -146,10 +147,7 @@ exchange.verbose = argv.verbose  # now set verbose mode
 if argv.method:
     method = getattr(exchange, argv.method)
     # if it is a method, call it
-    if callable(method):
-        result = method(*args)
-    else:  # otherwise it's a property, print it
-        result = method
+    result = method(*args) if callable(method) else method
     if argv.table:
         result = list(result.values()) if isinstance(result, dict) else result
         print(table([exchange.omit(v, 'info') for v in result]))

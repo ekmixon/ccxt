@@ -376,7 +376,7 @@ class bitmart(Exchange):
         data = self.safe_value(response, 'data', {})
         services = self.safe_value(data, 'service', [])
         servicesByType = self.index_by(services, 'service_type')
-        if (type == 'swap') or (type == 'future'):
+        if type in ['swap', 'future']:
             type = 'contract'
         service = self.safe_value(servicesByType, type)
         status = None
@@ -425,7 +425,7 @@ class bitmart(Exchange):
         data = self.safe_value(response, 'data', {})
         symbols = self.safe_value(data, 'symbols', [])
         result = []
-        for i in range(0, len(symbols)):
+        for i in range(len(symbols)):
             market = symbols[i]
             id = self.safe_string(market, 'symbol')
             numericId = self.safe_integer(market, 'symbol_id')
@@ -433,7 +433,7 @@ class bitmart(Exchange):
             quoteId = self.safe_string(market, 'quote_currency')
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = base + '/' + quote
+            symbol = f'{base}/{quote}'
             #
             # https://github.com/bitmartexchange/bitmart-official-api-docs/blob/master/rest/public/symbols_details.md#response-details
             # from the above API doc:
@@ -543,7 +543,7 @@ class bitmart(Exchange):
         data = self.safe_value(response, 'data', {})
         contracts = self.safe_value(data, 'contracts', [])
         result = []
-        for i in range(0, len(contracts)):
+        for i in range(len(contracts)):
             market = contracts[i]
             contract = self.safe_value(market, 'contract', {})
             id = self.safe_string(contract, 'contract_id')
@@ -640,8 +640,7 @@ class bitmart(Exchange):
         #     }
         #
         data = response['data']
-        withdrawFees = {}
-        withdrawFees[code] = self.safe_number(data, 'withdraw_fee')
+        withdrawFees = {code: self.safe_number(data, 'withdraw_fee')}
         return {
             'info': response,
             'withdraw': withdrawFees,
@@ -696,9 +695,7 @@ class bitmart(Exchange):
         quoteVolume = self.safe_number_2(ticker, 'quote_volume_24h', 'quote_coin_volume')
         quoteVolume = self.safe_number(ticker, 'volume_24h', quoteVolume)
         open = self.safe_number_2(ticker, 'open_24h', 'open')
-        average = None
-        if (last is not None) and (open is not None):
-            average = self.sum(last, open) / 2
+        average = None if last is None or open is None else self.sum(last, open) / 2
         average = self.safe_number(ticker, 'avg_price', average)
         price = self.safe_value(ticker, 'depth_price', ticker)
         return {
@@ -798,7 +795,7 @@ class bitmart(Exchange):
         type = self.safe_string(params, 'type', defaultType)
         params = self.omit(params, 'type')
         method = None
-        if (type == 'swap') or (type == 'future'):
+        if type in ['swap', 'future']:
             method = 'publicContractGetTickers'
         elif type == 'spot':
             method = 'publicSpotGetTicker'
@@ -806,7 +803,7 @@ class bitmart(Exchange):
         data = self.safe_value(response, 'data', {})
         tickers = self.safe_value(data, 'tickers', [])
         result = {}
-        for i in range(0, len(tickers)):
+        for i in range(len(tickers)):
             ticker = self.parse_ticker(tickers[i])
             symbol = ticker['symbol']
             result[symbol] = ticker
@@ -831,7 +828,7 @@ class bitmart(Exchange):
         data = self.safe_value(response, 'data', {})
         currencies = self.safe_value(data, 'currencies', [])
         result = {}
-        for i in range(0, len(currencies)):
+        for i in range(len(currencies)):
             currency = currencies[i]
             id = self.safe_string(currency, 'currency')
             code = self.safe_currency_code(id)
@@ -972,10 +969,7 @@ class bitmart(Exchange):
         way = self.safe_integer(trade, 'way')
         side = self.safe_string_lower_2(trade, 'type', 'side')
         if (side is None) and (way is not None):
-            if way < 5:
-                side = 'buy'
-            else:
-                side = 'sell'
+            side = 'buy' if way < 5 else 'sell'
         takerOrMaker = None
         execType = self.safe_string(trade, 'exec_type')
         if execType is not None:
@@ -1160,29 +1154,25 @@ class bitmart(Exchange):
             if since is None:
                 end = int(self.milliseconds() / 1000)
                 start = end - limit * duration
-                request['from'] = start
-                request['to'] = end
             else:
                 start = int(since / 1000)
                 end = self.sum(start, limit * duration)
-                request['from'] = start
-                request['to'] = end
-        elif (type == 'swap') or (type == 'future'):
+            request['from'] = start
+            request['to'] = end
+        elif type in ['swap', 'future']:
             method = 'publicContractGetQuote'
             request['contractID'] = market['id']
-            defaultLimit = 500
             if limit is None:
+                defaultLimit = 500
                 limit = defaultLimit
             if since is None:
                 end = int(self.milliseconds() / 1000)
                 start = end - limit * duration
-                request['startTime'] = start
-                request['endTime'] = end
             else:
                 start = int(since / 1000)
                 end = self.sum(start, limit * duration)
-                request['startTime'] = start
-                request['endTime'] = end
+            request['startTime'] = start
+            request['endTime'] = end
             request['unit'] = self.timeframes[timeframe]
             request['resolution'] = 'M'
         response = getattr(self, method)(self.extend(request, params))
@@ -1219,13 +1209,15 @@ class bitmart(Exchange):
         data = self.safe_value(response, 'data', {})
         if isinstance(data, list):
             return self.parse_ohlcvs(data, market, timeframe, since, limit)
-        else:
-            klines = self.safe_value(data, 'klines', [])
-            return self.parse_ohlcvs(klines, market, timeframe, since, limit)
+        klines = self.safe_value(data, 'klines', [])
+        return self.parse_ohlcvs(klines, market, timeframe, since, limit)
 
     def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchMyTrades() requires a symbol argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchMyTrades() requires a symbol argument'
+            )
+
         self.load_markets()
         market = self.market(symbol)
         method = None
@@ -1301,7 +1293,10 @@ class bitmart(Exchange):
 
     def fetch_order_trades(self, id, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrderTrades() requires a symbol argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchOrderTrades() requires a symbol argument'
+            )
+
         self.load_markets()
         market = self.market(symbol)
         method = None
@@ -1382,7 +1377,7 @@ class bitmart(Exchange):
             method = 'privateSpotGetWallet'
         elif type == 'account':
             method = 'privateAccountGetWallet'
-        elif (type == 'swap') or (type == 'future') or (type == 'contract'):
+        elif type in ['swap', 'future', 'contract']:
             method = 'privateContractGetAccounts'
         response = getattr(self, method)(params)
         #
@@ -1442,7 +1437,7 @@ class bitmart(Exchange):
         data = self.safe_value(response, 'data', {})
         wallet = self.safe_value_2(data, 'wallet', 'accounts', [])
         result = {'info': response}
-        for i in range(0, len(wallet)):
+        for i in range(len(wallet)):
             balance = wallet[i]
             currencyId = self.safe_string_2(balance, 'id', 'currency')
             currencyId = self.safe_string(balance, 'coin_code', currencyId)
@@ -1600,8 +1595,9 @@ class bitmart(Exchange):
                 # for market buy it requires the amount of quote currency to spend
                 if side == 'buy':
                     notional = self.safe_number(params, 'notional')
-                    createMarketBuyOrderRequiresPrice = self.safe_value(self.options, 'createMarketBuyOrderRequiresPrice', True)
-                    if createMarketBuyOrderRequiresPrice:
+                    if createMarketBuyOrderRequiresPrice := self.safe_value(
+                        self.options, 'createMarketBuyOrderRequiresPrice', True
+                    ):
                         if price is not None:
                             if notional is None:
                                 notional = amount * price
@@ -1644,7 +1640,7 @@ class bitmart(Exchange):
 
     def cancel_order(self, id, symbol=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' cancelOrder() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} cancelOrder() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         request = {}
@@ -1700,29 +1696,42 @@ class bitmart(Exchange):
         if succeeded is not None:
             id = self.safe_string(succeeded, 0)
             if id is None:
-                raise InvalidOrder(self.id + ' cancelOrder() failed to cancel ' + symbol + ' order id ' + id)
+                raise InvalidOrder(
+                    f'{self.id} cancelOrder() failed to cancel {symbol} order id {id}'
+                )
+
         else:
             result = self.safe_value(data, 'result')
             if not result:
-                raise InvalidOrder(self.id + ' cancelOrder() ' + symbol + ' order id ' + id + ' is filled or canceled')
+                raise InvalidOrder(
+                    f'{self.id} cancelOrder() {symbol} order id {id} is filled or canceled'
+                )
+
         order = self.parse_order(id, market)
         return self.extend(order, {'id': id})
 
     def cancel_all_orders(self, symbol=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' cancelAllOrders() requires a symbol argument')
+            raise ArgumentsRequired(
+                f'{self.id} cancelAllOrders() requires a symbol argument'
+            )
+
         side = self.safe_string(params, 'side')
         if side is None:
             raise ArgumentsRequired(self.id + " cancelAllOrders() requires a `side` parameter('buy' or 'sell')")
         self.load_markets()
         market = self.market(symbol)
         if not market['spot']:
-            raise NotSupported(self.id + ' cancelAllOrders() does not support ' + market['type'] + ' orders, only spot orders are accepted')
+            raise NotSupported(
+                f'{self.id} cancelAllOrders() does not support '
+                + market['type']
+                + ' orders, only spot orders are accepted'
+            )
+
         request = {
             'symbol': market['id'],
             'side': side,  # 'buy' or 'sell'
         }
-        response = self.privateSpotPostCancelOrders(self.extend(request, params))
         #
         #     {
         #         "code": 1000,
@@ -1731,22 +1740,24 @@ class bitmart(Exchange):
         #         "data": {}
         #     }
         #
-        return response
+        return self.privateSpotPostCancelOrders(self.extend(request, params))
 
     def cancel_orders(self, ids, symbol=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' canelOrders() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} canelOrders() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         if not market['spot']:
-            raise NotSupported(self.id + ' cancelOrders() does not support ' + market['type'] + ' orders, only contract orders are accepted')
-        orders = []
-        for i in range(0, len(ids)):
-            orders.append(int(ids[i]))
+            raise NotSupported(
+                f'{self.id} cancelOrders() does not support '
+                + market['type']
+                + ' orders, only contract orders are accepted'
+            )
+
+        orders = [int(ids[i]) for i in range(len(ids))]
         request = {
             'orders': orders,
         }
-        response = self.privateContractPostCancelOrders(self.extend(request, params))
         #
         # spot
         #
@@ -1773,11 +1784,14 @@ class bitmart(Exchange):
         #         }
         #     }
         #
-        return response
+        return self.privateContractPostCancelOrders(self.extend(request, params))
 
     def fetch_orders_by_status(self, status, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrdersByStatus() requires a symbol argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchOrdersByStatus() requires a symbol argument'
+            )
+
         self.load_markets()
         market = self.market(symbol)
         request = {}
@@ -1891,16 +1905,21 @@ class bitmart(Exchange):
 
     def fetch_orders(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrders() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} fetchOrders() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         if not (market['swap'] or market['future']):
-            raise NotSupported(self.id + ' fetchOrders does not support ' + market['type'] + ' markets, only contracts are supported')
+            raise NotSupported(
+                f'{self.id} fetchOrders does not support '
+                + market['type']
+                + ' markets, only contracts are supported'
+            )
+
         return self.fetch_orders_by_status(0, symbol, since, limit, params)
 
     def fetch_order(self, id, symbol=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrder() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} fetchOrder() requires a symbol argument')
         self.load_markets()
         request = {}
         market = self.market(symbol)
@@ -1971,14 +1990,16 @@ class bitmart(Exchange):
         #     }
         #
         data = self.safe_value(response, 'data')
-        if 'orders' in data:
-            orders = self.safe_value(data, 'orders', [])
-            firstOrder = self.safe_value(orders, 0)
-            if firstOrder is None:
-                raise OrderNotFound(self.id + ' fetchOrder() could not find ' + symbol + ' order id ' + id)
-            return self.parse_order(firstOrder, market)
-        else:
+        if 'orders' not in data:
             return self.parse_order(data, market)
+        orders = self.safe_value(data, 'orders', [])
+        firstOrder = self.safe_value(orders, 0)
+        if firstOrder is None:
+            raise OrderNotFound(
+                f'{self.id} fetchOrder() could not find {symbol} order id {id}'
+            )
+
+        return self.parse_order(firstOrder, market)
 
     def fetch_deposit_address(self, code, params={}):
         self.load_markets()
@@ -1993,7 +2014,7 @@ class bitmart(Exchange):
             network = self.safe_string_upper(params, 'network', defaultNetwork)  # self line allows the user to specify either ERC20 or ETH
             network = self.safe_string(networks, network, network)  # handle ERC20>ETH alias
             if network is not None:
-                request['currency'] += '-' + network  # when network the currency need to be changed to currency + '-' + network https://developer-pro.bitmart.com/en/account/withdraw_apply.html on the end of page
+                request['currency'] += f'-{network}'
                 params = self.omit(params, 'network')
         response = self.privateAccountGetDepositAddress(self.extend(request, params))
         #
@@ -2040,7 +2061,7 @@ class bitmart(Exchange):
             network = self.safe_string_upper(params, 'network', defaultNetwork)  # self line allows the user to specify either ERC20 or ETH
             network = self.safe_string(networks, network, network)  # handle ERC20>ETH alias
             if network is not None:
-                request['currency'] += '-' + network  # when network the currency need to be changed to currency + '-' + network https://developer-pro.bitmart.com/en/account/withdraw_apply.html on the end of page
+                request['currency'] += f'-{network}'
                 params = self.omit(params, 'network')
         response = self.privateAccountPostWithdrawApply(self.extend(request, params))
         #
@@ -2160,12 +2181,15 @@ class bitmart(Exchange):
         code = self.safe_currency_code(currencyId, currency)
         status = self.parse_transaction_status(self.safe_string(transaction, 'status'))
         feeCost = self.safe_number(transaction, 'fee')
-        fee = None
-        if feeCost is not None:
-            fee = {
+        fee = (
+            {
                 'cost': feeCost,
                 'currency': code,
             }
+            if feeCost is not None
+            else None
+        )
+
         txid = self.safe_string(transaction, 'tx_id')
         if txid == '':
             txid = None
@@ -2198,20 +2222,21 @@ class bitmart(Exchange):
         access = self.safe_string(api, 0)
         type = self.safe_string(api, 1)
         baseUrl = self.implode_hostname(self.urls['api']['rest'])
-        url = baseUrl + '/' + type
+        url = f'{baseUrl}/{type}'
         if type != 'system':
-            url += '/' + self.version
-        url += '/' + self.implode_params(path, params)
+            url += f'/{self.version}'
+        url += f'/{self.implode_params(path, params)}'
         query = self.omit(params, self.extract_params(path))
-        if type == 'system':
-            if query:
+        if (
+            type == 'system'
+            and query
+            or type != 'system'
+            and access == 'public'
+            and query
+        ):
                 # print(query)
-                url += '?' + self.urlencode(query)
-        elif access == 'public':
-            if query:
-                # print(query)
-                url += '?' + self.urlencode(query)
-        elif access == 'private':
+            url += f'?{self.urlencode(query)}'
+        elif type != 'system' and access != 'public' and access == 'private':
             self.check_required_credentials()
             timestamp = str(self.milliseconds())
             queryString = ''
@@ -2219,15 +2244,14 @@ class bitmart(Exchange):
                 'X-BM-KEY': self.apiKey,
                 'X-BM-TIMESTAMP': timestamp,
             }
-            if (method == 'POST') or (method == 'PUT'):
+            if method in ['POST', 'PUT']:
                 headers['Content-Type'] = 'application/json'
                 body = self.json(query)
                 queryString = body
-            else:
-                if query:
-                    queryString = self.urlencode(query)
-                    url += '?' + queryString
-            auth = timestamp + '#' + self.uid + '#' + queryString
+            elif query:
+                queryString = self.urlencode(query)
+                url += f'?{queryString}'
+            auth = f'{timestamp}#{self.uid}#{queryString}'
             signature = self.hmac(self.encode(auth), self.encode(self.secret))
             headers['X-BM-SIGN'] = signature
         return {'url': url, 'method': method, 'body': body, 'headers': headers}
@@ -2250,7 +2274,7 @@ class bitmart(Exchange):
         message = self.safe_string(response, 'message')
         errorCode = self.safe_string(response, 'code')
         if ((errorCode is not None) and (errorCode != '1000')) or ((message is not None) and (message != 'OK')):
-            feedback = self.id + ' ' + body
+            feedback = f'{self.id} {body}'
             self.throw_exactly_matched_exception(self.exceptions['exact'], errorCode, feedback)
             self.throw_broadly_matched_exception(self.exceptions['broad'], errorCode, feedback)
             self.throw_exactly_matched_exception(self.exceptions['exact'], message, feedback)

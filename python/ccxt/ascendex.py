@@ -303,8 +303,8 @@ class ascendex(Exchange):
         dataById = self.deep_extend(assetsById, marginById, cashById)
         ids = list(dataById.keys())
         result = {}
-        for i in range(0, len(ids)):
-            id = ids[i]
+        for id_ in ids:
+            id = id_
             currency = dataById[id]
             code = self.safe_currency_code(id)
             precision = self.safe_string_2(currency, 'precisionScale', 'nativeScale')
@@ -421,8 +421,8 @@ class ascendex(Exchange):
         dataById = self.deep_extend(productsById, cashAndFuturesById)
         ids = list(dataById.keys())
         result = []
-        for i in range(0, len(ids)):
-            id = ids[i]
+        for id_ in ids:
+            id = id_
             market = dataById[id]
             baseId = self.safe_string(market, 'baseAsset')
             quoteId = self.safe_string(market, 'quoteAsset')
@@ -440,7 +440,7 @@ class ascendex(Exchange):
             margin = self.safe_value(market, 'marginTradable', False)
             symbol = id
             if not future:
-                symbol = base + '/' + quote
+                symbol = f'{base}/{quote}'
             fee = self.safe_number(market, 'commissionReserveRate')
             result.append({
                 'id': id,
@@ -576,7 +576,7 @@ class ascendex(Exchange):
             'datetime': None,
         }
         balances = self.safe_value(response, 'data', [])
-        for i in range(0, len(balances)):
+        for i in range(len(balances)):
             balance = balances[i]
             code = self.safe_currency_code(self.safe_string(balance, 'asset'))
             account = self.account()
@@ -762,10 +762,7 @@ class ascendex(Exchange):
         defaultLimit = self.safe_integer(options, 'limit', 500)
         if since is not None:
             request['from'] = since
-            if limit is None:
-                limit = defaultLimit
-            else:
-                limit = min(limit, defaultLimit)
+            limit = defaultLimit if limit is None else min(limit, defaultLimit)
             request['to'] = self.sum(since, limit * duration * 1000, 1)
         elif limit is not None:
             request['n'] = limit  # max 500
@@ -937,9 +934,8 @@ class ascendex(Exchange):
         filled = self.safe_number_2(order, 'cumFilledQty', 'cumQty')
         id = self.safe_string(order, 'orderId')
         clientOrderId = self.safe_string(order, 'id')
-        if clientOrderId is not None:
-            if len(clientOrderId) < 1:
-                clientOrderId = None
+        if clientOrderId is not None and len(clientOrderId) < 1:
+            clientOrderId = None
         type = self.safe_string_lower(order, 'orderType')
         side = self.safe_string_lower(order, 'side')
         feeCost = self.safe_number(order, 'cumFee')
@@ -1005,15 +1001,17 @@ class ascendex(Exchange):
         if clientOrderId is not None:
             request['id'] = clientOrderId
             params = self.omit(params, ['clientOrderId', 'id'])
-        if (type == 'limit') or (type == 'stop_limit'):
+        if type in ['limit', 'stop_limit']:
             request['orderPrice'] = self.price_to_precision(symbol, price)
-        if (type == 'stop_limit') or (type == 'stop_market'):
+        if type in ['stop_limit', 'stop_market']:
             stopPrice = self.safe_number(params, 'stopPrice')
             if stopPrice is None:
-                raise InvalidOrder(self.id + ' createOrder() requires a stopPrice parameter for ' + type + ' orders')
-            else:
-                request['stopPrice'] = self.price_to_precision(symbol, stopPrice)
-                params = self.omit(params, 'stopPrice')
+                raise InvalidOrder(
+                    f'{self.id} createOrder() requires a stopPrice parameter for {type} orders'
+                )
+
+            request['stopPrice'] = self.price_to_precision(symbol, stopPrice)
+            params = self.omit(params, 'stopPrice')
         response = self.accountCategoryPostOrder(self.extend(request, params))
         #
         #     {
@@ -1086,9 +1084,7 @@ class ascendex(Exchange):
     def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
         self.load_markets()
         self.load_accounts()
-        market = None
-        if symbol is not None:
-            market = self.market(symbol)
+        market = self.market(symbol) if symbol is not None else None
         defaultAccountCategory = self.safe_string(self.options, 'account-category', 'cash')
         options = self.safe_value(self.options, 'fetchOpenOrders', {})
         accountCategory = self.safe_string(options, 'account-category', defaultAccountCategory)
@@ -1133,7 +1129,7 @@ class ascendex(Exchange):
             return self.parse_orders(data, market, since, limit)
         # a workaround for https://github.com/ccxt/ccxt/issues/7187
         orders = []
-        for i in range(0, len(data)):
+        for i in range(len(data)):
             order = self.parse_order(data[i], market)
             orders.append(order)
         return self.filter_by_symbol_since_limit(orders, symbol, since, limit)
@@ -1249,7 +1245,7 @@ class ascendex(Exchange):
 
     def cancel_order(self, id, symbol=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' cancelOrder() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} cancelOrder() requires a symbol argument')
         self.load_markets()
         self.load_accounts()
         market = self.market(symbol)
@@ -1315,7 +1311,6 @@ class ascendex(Exchange):
         if symbol is not None:
             market = self.market(symbol)
             request['symbol'] = market['id']
-        response = self.accountCategoryDeleteOrderAll(self.extend(request, params))
         #
         #     {
         #         "code": 0,
@@ -1334,7 +1329,7 @@ class ascendex(Exchange):
         #         }
         #     }
         #
-        return response
+        return self.accountCategoryDeleteOrderAll(self.extend(request, params))
 
     def parse_deposit_address(self, depositAddress, currency=None):
         #
@@ -1413,7 +1408,10 @@ class ascendex(Exchange):
             if chainName is None:
                 chainNames = list(addressesByChainName.keys())
                 chains = ', '.join(chainNames)
-                raise ArgumentsRequired(self.id + ' fetchDepositAddress returned more than one address, a chainName parameter is required, one of ' + chains)
+                raise ArgumentsRequired(
+                    f'{self.id} fetchDepositAddress returned more than one address, a chainName parameter is required, one of {chains}'
+                )
+
             address = self.safe_value(addressesByChainName, chainName, {})
         else:
             # first address
@@ -1554,19 +1552,19 @@ class ascendex(Exchange):
             url += self.implode_params('/{account-group}', params)
             query = self.omit(params, 'account-group')
         request = self.implode_params(path, query)
-        url += '/api/pro/' + self.version
+        url += f'/api/pro/{self.version}'
         if accountCategory:
             url += self.implode_params('/{account-category}', query)
             query = self.omit(query, 'account-category')
-        url += '/' + request
+        url += f'/{request}'
         query = self.omit(query, self.extract_params(path))
         if api == 'public':
             if query:
-                url += '?' + self.urlencode(query)
+                url += f'?{self.urlencode(query)}'
         else:
             self.check_required_credentials()
             timestamp = str(self.milliseconds())
-            payload = timestamp + '+' + request
+            payload = f'{timestamp}+{request}'
             hmac = self.hmac(self.encode(payload), self.encode(self.secret), hashlib.sha256, 'base64')
             headers = {
                 'x-auth-key': self.apiKey,
@@ -1575,7 +1573,7 @@ class ascendex(Exchange):
             }
             if method == 'GET':
                 if query:
-                    url += '?' + self.urlencode(query)
+                    url += f'?{self.urlencode(query)}'
             else:
                 headers['Content-Type'] = 'application/json'
                 body = self.json(query)
@@ -1595,7 +1593,7 @@ class ascendex(Exchange):
         message = self.safe_string(response, 'message')
         error = (code is not None) and (code != '0')
         if error or (message is not None):
-            feedback = self.id + ' ' + body
+            feedback = f'{self.id} {body}'
             self.throw_exactly_matched_exception(self.exceptions['exact'], code, feedback)
             self.throw_exactly_matched_exception(self.exceptions['exact'], message, feedback)
             self.throw_broadly_matched_exception(self.exceptions['broad'], message, feedback)

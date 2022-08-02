@@ -347,7 +347,7 @@ class bitfinex2(bitfinex):
         return(code in self.options['fiat'])
 
     def get_currency_id(self, code):
-        return 'f' + code
+        return f'f{code}'
 
     def fetch_status(self, params={}):
         #
@@ -370,7 +370,7 @@ class bitfinex2(bitfinex):
         v1response = self.v1GetSymbolsDetails(params)
         futuresMarketIds = self.safe_value(v2response, 0, [])
         result = []
-        for i in range(0, len(v1response)):
+        for i in range(len(v1response)):
             market = v1response[i]
             id = self.safe_string_upper(market, 'pair')
             spot = True
@@ -385,12 +385,12 @@ class bitfinex2(bitfinex):
                 baseId = parts[0]
                 quoteId = parts[1]
             else:
-                baseId = id[0:3]
+                baseId = id[:3]
                 quoteId = id[3:6]
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = base + '/' + quote
-            id = 't' + id
+            symbol = f'{base}/{quote}'
+            id = f't{id}'
             baseId = self.get_currency_id(baseId)
             quoteId = self.get_currency_id(quoteId)
             precision = {
@@ -404,15 +404,10 @@ class bitfinex2(bitfinex):
                     'min': self.parse_number(minOrderSizeString),
                     'max': self.parse_number(maxOrderSizeString),
                 },
-                'price': {
-                    'min': self.parse_number('1e-8'),
-                    'max': None,
-                },
+                'price': {'min': self.parse_number('1e-8'), 'max': None},
+                'cost': {'min': None, 'max': None},
             }
-            limits['cost'] = {
-                'min': None,
-                'max': None,
-            }
+
             margin = self.safe_value(market, 'margin')
             result.append({
                 'id': id,
@@ -538,7 +533,7 @@ class bitfinex2(bitfinex):
         }
         ids = self.safe_value(response, 0, [])
         result = {}
-        for i in range(0, len(ids)):
+        for i in range(len(ids)):
             id = ids[i]
             code = self.safe_currency_code(id)
             label = self.safe_value(indexed['label'], id, [])
@@ -550,7 +545,7 @@ class bitfinex2(bitfinex):
             fee = self.safe_number(fees, 1)
             undl = self.safe_value(indexed['undl'], id, [])
             precision = 8  # default precision, todo: fix "magic constants"
-            fid = 'f' + id
+            fid = f'f{id}'
             result[code] = {
                 'id': fid,
                 'code': code,
@@ -582,12 +577,16 @@ class bitfinex2(bitfinex):
         accountType = self.safe_string(accountsByType, requestedType)
         if accountType is None:
             keys = list(accountsByType.keys())
-            raise ExchangeError(self.id + ' fetchBalance type parameter must be one of ' + ', '.join(keys))
+            raise ExchangeError(
+                f'{self.id} fetchBalance type parameter must be one of '
+                + ', '.join(keys)
+            )
+
         isDerivative = requestedType == 'derivatives'
         query = self.omit(params, 'type')
         response = self.privatePostAuthRWallets(query)
         result = {'info': response}
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             balance = response[i]
             type = self.safe_string(balance, 0)
             currencyId = self.safe_string_lower(balance, 1, '')
@@ -611,11 +610,17 @@ class bitfinex2(bitfinex):
         fromId = self.safe_string(accountsByType, fromAccount)
         if fromId is None:
             keys = list(accountsByType.keys())
-            raise ExchangeError(self.id + ' transfer fromAccount must be one of ' + ', '.join(keys))
+            raise ExchangeError(
+                f'{self.id} transfer fromAccount must be one of ' + ', '.join(keys)
+            )
+
         toId = self.safe_string(accountsByType, toAccount)
         if toId is None:
             keys = list(accountsByType.keys())
-            raise ExchangeError(self.id + ' transfer toAccount must be one of ' + ', '.join(keys))
+            raise ExchangeError(
+                f'{self.id} transfer toAccount must be one of ' + ', '.join(keys)
+            )
+
         currency = self.currency(code)
         fromCurrencyId = self.convert_derivatives_id(currency, fromAccount)
         toCurrencyId = self.convert_derivatives_id(currency, toAccount)
@@ -636,8 +641,11 @@ class bitfinex2(bitfinex):
         if error == 'error':
             message = self.safe_string(response, 2, '')
             # same message as in v1
-            self.throw_exactly_matched_exception(self.exceptions['exact'], message, self.id + ' ' + message)
-            raise ExchangeError(self.id + ' ' + message)
+            self.throw_exactly_matched_exception(
+                self.exceptions['exact'], message, f'{self.id} {message}'
+            )
+
+            raise ExchangeError(f'{self.id} {message}')
         info = self.safe_value(response, 4)
         fromResponse = self.safe_string(info, 1)
         toResponse = self.safe_string(info, 2)
@@ -670,7 +678,7 @@ class bitfinex2(bitfinex):
             start = len(currencyId) - 2
             isDerivativeCode = currencyId[start:] == 'F0'
             if not isDerivativeCode:
-                currencyId = currencyId + 'F0'
+                currencyId = f'{currencyId}F0'
         elif type != 'margin':
             currencyId = self.safe_string(underlying, 1, transferId)
         else:
@@ -678,7 +686,7 @@ class bitfinex2(bitfinex):
         return currencyId
 
     def fetch_order(self, id, symbol=None, params={}):
-        raise NotSupported(self.id + ' fetchOrder is not implemented yet')
+        raise NotSupported(f'{self.id} fetchOrder is not implemented yet')
 
     def fetch_order_book(self, symbol, limit=None, params={}):
         self.load_markets()
@@ -701,7 +709,7 @@ class bitfinex2(bitfinex):
             'nonce': None,
         }
         priceIndex = 1 if (fullRequest['precision'] == 'R0') else 0
-        for i in range(0, len(orderbook)):
+        for i in range(len(orderbook)):
             order = orderbook[i]
             price = self.safe_number(order, priceIndex)
             signedAmount = self.safe_number(order, 2)
@@ -750,7 +758,7 @@ class bitfinex2(bitfinex):
             request['symbols'] = 'ALL'
         tickers = self.publicGetTickers(self.extend(request, params))
         result = {}
-        for i in range(0, len(tickers)):
+        for i in range(len(tickers)):
             ticker = tickers[i]
             id = ticker[0]
             if id in self.markets_by_id:
@@ -779,11 +787,11 @@ class bitfinex2(bitfinex):
             baseId = parts[0]
             quoteId = parts[1]
         else:
-            baseId = marketId[0:3]
+            baseId = marketId[:3]
             quoteId = marketId[3:6]
         base = self.safe_currency_code(baseId)
         quote = self.safe_currency_code(quoteId)
-        return base + '/' + quote
+        return f'{base}/{quote}'
 
     def parse_trade(self, trade, market=None):
         #
@@ -857,9 +865,8 @@ class bitfinex2(bitfinex):
             }
             orderType = trade[6]
             type = self.safe_string(self.options['exchangeTypes'], orderType)
-        if symbol is None:
-            if market is not None:
-                symbol = market['symbol']
+        if symbol is None and market is not None:
+            symbol = market['symbol']
         return {
             'id': id,
             'timestamp': timestamp,
@@ -1006,17 +1013,26 @@ class bitfinex2(bitfinex):
             'type': orderType,
             'amount': self.number_to_string(amount),
         }
-        if (orderType == 'LIMIT') or (orderType == 'EXCHANGE LIMIT'):
+        if (
+            orderType in ['LIMIT', 'EXCHANGE LIMIT']
+            or orderType not in ['STOP', 'EXCHANGE STOP']
+            and orderType not in ['STOP LIMIT', 'EXCHANGE STOP LIMIT']
+            and orderType not in ['TRAILING STOP', 'EXCHANGE TRAILING STOP']
+            and orderType in ['FOK', 'EXCHANGE FOK', 'IOC', 'EXCHANGE IOC']
+        ):
             request['price'] = self.number_to_string(price)
-        elif (orderType == 'STOP') or (orderType == 'EXCHANGE STOP'):
+        elif orderType in ['STOP', 'EXCHANGE STOP']:
             stopPrice = self.safe_number(params, 'stopPrice', price)
             request['price'] = self.number_to_string(stopPrice)
-        elif (orderType == 'STOP LIMIT') or (orderType == 'EXCHANGE STOP LIMIT'):
+        elif orderType in ['STOP LIMIT', 'EXCHANGE STOP LIMIT']:
             priceAuxLimit = self.safe_number(params, 'price_aux_limit')
             stopPrice = self.safe_number(params, 'stopPrice')
             if priceAuxLimit is None:
                 if stopPrice is None:
-                    raise ArgumentsRequired(self.id + ' createOrder() requires a stopPrice parameter or a price_aux_limit parameter for a ' + orderType + ' order')
+                    raise ArgumentsRequired(
+                        f'{self.id} createOrder() requires a stopPrice parameter or a price_aux_limit parameter for a {orderType} order'
+                    )
+
                 else:
                     request['price_aux_limit'] = self.number_to_string(price)
             else:
@@ -1024,13 +1040,11 @@ class bitfinex2(bitfinex):
                 if stopPrice is None:
                     stopPrice = price
             request['price'] = self.number_to_string(stopPrice)
-        elif (orderType == 'TRAILING STOP') or (orderType == 'EXCHANGE TRAILING STOP'):
+        elif orderType in ['TRAILING STOP', 'EXCHANGE TRAILING STOP']:
             priceTrailing = self.safe_number(params, 'price_trailing')
             request['price_trailing'] = self.number_to_string(priceTrailing)
             stopPrice = self.safe_number(params, 'stopPrice', price)
             request['price'] = self.number_to_string(stopPrice)
-        elif (orderType == 'FOK') or (orderType == 'EXCHANGE FOK') or (orderType == 'IOC') or (orderType == 'EXCHANGE IOC'):
-            request['price'] = self.number_to_string(price)
         params = self.omit(params, ['stopPrice', 'price_aux_limit', 'price_trailing'])
         clientOrderId = self.safe_value_2(params, 'cid', 'clientOrderId')
         if clientOrderId is not None:
@@ -1088,7 +1102,7 @@ class bitfinex2(bitfinex):
         if status != 'SUCCESS':
             errorCode = response[5]
             errorText = response[7]
-            raise ExchangeError(self.id + ' ' + response[6] + ': ' + errorText + '(#' + errorCode + ')')
+            raise ExchangeError(f'{self.id} {response[6]}: {errorText}(#{errorCode})')
         orders = self.safe_value(response, 4, [])
         order = self.safe_value(orders, 0)
         return self.parse_order(order, market)
@@ -1128,7 +1142,7 @@ class bitfinex2(bitfinex):
         orders = self.fetch_open_orders(symbol, None, None, self.extend(request, params))
         order = self.safe_value(orders, 0)
         if order is None:
-            raise OrderNotFound(self.id + ' order ' + id + ' not found')
+            raise OrderNotFound(f'{self.id} order {id} not found')
         return order
 
     def fetch_closed_order(self, id, symbol=None, params={}):
@@ -1138,7 +1152,7 @@ class bitfinex2(bitfinex):
         orders = self.fetch_closed_orders(symbol, None, None, self.extend(request, params))
         order = self.safe_value(orders, 0)
         if order is None:
-            raise OrderNotFound(self.id + ' order ' + id + ' not found')
+            raise OrderNotFound(f'{self.id} order {id} not found')
         return order
 
     def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
@@ -1174,7 +1188,10 @@ class bitfinex2(bitfinex):
 
     def fetch_order_trades(self, id, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrderTrades() requires a symbol argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchOrderTrades() requires a symbol argument'
+            )
+
         self.load_markets()
         market = self.market(symbol)
         orderId = int(id)
@@ -1209,8 +1226,7 @@ class bitfinex2(bitfinex):
         request = {
             'op_renew': 1,
         }
-        response = self.fetch_deposit_address(code, self.extend(request, params))
-        return response
+        return self.fetch_deposit_address(code, self.extend(request, params))
 
     def fetch_deposit_address(self, code, params={}):
         self.load_markets()
@@ -1349,10 +1365,7 @@ class bitfinex2(bitfinex):
             status = self.parse_transaction_status(self.safe_string(transaction, 9))
             amount = self.safe_number(transaction, 12)
             if amount is not None:
-                if amount < 0:
-                    type = 'withdrawal'
-                else:
-                    type = 'deposit'
+                type = 'withdrawal' if amount < 0 else 'deposit'
             feeCost = self.safe_number(transaction, 13)
             if feeCost is not None:
                 feeCost = -feeCost
@@ -1473,7 +1486,6 @@ class bitfinex2(bitfinex):
 
     def fetch_positions(self, symbols=None, params={}):
         self.load_markets()
-        response = self.privatePostPositions(params)
         #
         #     [
         #         [
@@ -1509,27 +1521,23 @@ class bitfinex2(bitfinex):
         #     ]
         #
         # todo unify parsePosition/parsePositions
-        return response
+        return self.privatePostPositions(params)
 
     def nonce(self):
         return self.milliseconds()
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
-        request = '/' + self.implode_params(path, params)
+        request = f'/{self.implode_params(path, params)}'
         query = self.omit(params, self.extract_params(path))
-        if api == 'v1':
-            request = api + request
-        else:
-            request = self.version + request
+        request = api + request if api == 'v1' else self.version + request
         url = self.urls['api'][api] + '/' + request
-        if api == 'public':
-            if query:
-                url += '?' + self.urlencode(query)
+        if api == 'public' and query:
+            url += f'?{self.urlencode(query)}'
         if api == 'private':
             self.check_required_credentials()
             nonce = str(self.nonce())
             body = self.json(query)
-            auth = '/api/' + request + nonce + body
+            auth = f'/api/{request}{nonce}{body}'
             signature = self.hmac(self.encode(auth), self.encode(self.secret), hashlib.sha384)
             headers = {
                 'bfx-nonce': nonce,
@@ -1543,19 +1551,19 @@ class bitfinex2(bitfinex):
         if response is not None:
             if not isinstance(response, list):
                 message = self.safe_string_2(response, 'message', 'error')
-                feedback = self.id + ' ' + responseBody
+                feedback = f'{self.id} {responseBody}'
                 self.throw_exactly_matched_exception(self.exceptions['exact'], message, feedback)
                 self.throw_broadly_matched_exception(self.exceptions['broad'], message, feedback)
-                raise ExchangeError(self.id + ' ' + responseBody)
+                raise ExchangeError(f'{self.id} {responseBody}')
         elif response == '':
-            raise ExchangeError(self.id + ' returned empty response')
+            raise ExchangeError(f'{self.id} returned empty response')
         if statusCode == 500:
             # See https://docs.bitfinex.com/docs/abbreviations-glossary#section-errorinfo-codes
             errorCode = self.number_to_string(response[1])
             errorText = response[2]
-            feedback = self.id + ' ' + errorText
+            feedback = f'{self.id} {errorText}'
             self.throw_exactly_matched_exception(self.exceptions['exact'], errorCode, feedback)
             self.throw_exactly_matched_exception(self.exceptions['exact'], errorText, feedback)
             self.throw_broadly_matched_exception(self.exceptions['broad'], errorText, feedback)
-            raise ExchangeError(self.id + ' ' + errorText + '(#' + errorCode + ')')
+            raise ExchangeError(f'{self.id} {errorText}(#{errorCode})')
         return response

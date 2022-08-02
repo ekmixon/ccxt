@@ -172,14 +172,14 @@ class bitbns(Exchange):
         #     ]
         #
         result = []
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             market = response[i]
             id = self.safe_string(market, 'id')
             baseId = self.safe_string(market, 'base')
             quoteId = self.safe_string(market, 'quote')
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = base + '/' + quote
+            symbol = f'{base}/{quote}'
             marketPrecision = self.safe_value(market, 'precision', {})
             precision = {
                 'amount': self.safe_integer(marketPrecision, 'amount'),
@@ -191,7 +191,7 @@ class bitbns(Exchange):
             costLimits = self.safe_value(marketLimits, 'cost', {})
             usdt = (quoteId == 'USDT')
             # INR markets don't need a _INR prefix
-            uppercaseId = (baseId + '_' + quoteId) if usdt else baseId
+            uppercaseId = f'{baseId}_{quoteId}' if usdt else baseId
             result.append({
                 'id': id,
                 'uppercaseId': uppercaseId,
@@ -371,8 +371,8 @@ class bitbns(Exchange):
         }
         data = self.safe_value(response, 'data', {})
         keys = list(data.keys())
-        for i in range(0, len(keys)):
-            key = keys[i]
+        for key_ in keys:
+            key = key_
             parts = key.split('availableorder')
             numParts = len(parts)
             if numParts > 1:
@@ -381,7 +381,7 @@ class bitbns(Exchange):
                     code = self.safe_currency_code(currencyId)
                     account = self.account()
                     account['free'] = self.safe_string(data, key)
-                    account['used'] = self.safe_string(data, 'inorder' + currencyId)
+                    account['used'] = self.safe_string(data, f'inorder{currencyId}')
                     result[code] = account
         return self.parse_balance(result)
 
@@ -455,13 +455,7 @@ class bitbns(Exchange):
         status = self.parse_order_status(self.safe_string(order, 'status'))
         side = self.safe_string_lower(order, 'side')
         feeCost = self.safe_number(order, 'fee')
-        fee = None
-        if feeCost is not None:
-            feeCurrencyCode = None
-            fee = {
-                'cost': feeCost,
-                'currency': feeCurrencyCode,
-            }
+        fee = {'cost': feeCost, 'currency': None} if feeCost is not None else None
         return self.safe_order({
             'info': order,
             'id': id,
@@ -488,7 +482,7 @@ class bitbns(Exchange):
 
     def create_order(self, symbol, type, side, amount, price=None, params={}):
         if type != 'limit':
-            raise ExchangeError(self.id + ' allows limit orders only')
+            raise ExchangeError(f'{self.id} allows limit orders only')
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -517,7 +511,7 @@ class bitbns(Exchange):
 
     def cancel_order(self, id, symbol=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' cancelOrder() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} cancelOrder() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         quoteSide = 'usdtcancelOrder' if (market['quoteId'] == 'USDT') else 'cancelOrder'
@@ -531,7 +525,7 @@ class bitbns(Exchange):
 
     def fetch_order(self, id, symbol=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrder() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} fetchOrder() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -570,7 +564,7 @@ class bitbns(Exchange):
 
     def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrders() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} fetchOrders() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         quoteSide = 'usdtListOpenOrders' if (market['quoteId'] == 'USDT') else 'listOpenOrders'
@@ -663,7 +657,7 @@ class bitbns(Exchange):
 
     def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrders() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} fetchOrders() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -719,7 +713,10 @@ class bitbns(Exchange):
 
     def fetch_deposits(self, code=None, since=None, limit=None, params={}):
         if code is None:
-            raise ArgumentsRequired(self.id + ' fetchDeposits() requires a currency code argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchDeposits() requires a currency code argument'
+            )
+
         self.load_markets()
         currency = self.currency(code)
         request = {
@@ -755,7 +752,10 @@ class bitbns(Exchange):
 
     def fetch_withdrawals(self, code=None, since=None, limit=None, params={}):
         if code is None:
-            raise ArgumentsRequired(self.id + ' fetchWithdrawals() requires a currency code argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchWithdrawals() requires a currency code argument'
+            )
+
         self.load_markets()
         currency = self.currency(code)
         request = {
@@ -825,9 +825,7 @@ class bitbns(Exchange):
         # status = self.parse_transaction_status_by_type(self.safe_string(transaction, 'status'), type)
         amount = self.safe_number(transaction, 'amount')
         feeCost = self.safe_number(transaction, 'fee')
-        fee = None
-        if feeCost is not None:
-            fee = {'currency': code, 'cost': feeCost}
+        fee = {'currency': code, 'cost': feeCost} if feeCost is not None else None
         return {
             'info': transaction,
             'id': None,
@@ -883,7 +881,7 @@ class bitbns(Exchange):
     def sign(self, path, api='v1', method='GET', params={}, headers=None, body=None):
         self.check_required_credentials()
         baseUrl = self.implode_hostname(self.urls['api'][api])
-        url = baseUrl + '/' + self.implode_params(path, params)
+        url = f'{baseUrl}/{self.implode_params(path, params)}'
         query = self.omit(params, self.extract_params(path))
         nonce = str(self.nonce())
         headers = {
@@ -891,12 +889,9 @@ class bitbns(Exchange):
         }
         if method == 'GET':
             if query:
-                url += '?' + self.urlencode(query)
+                url += f'?{self.urlencode(query)}'
         elif method == 'POST':
-            if query:
-                body = self.json(query)
-            else:
-                body = '{}'
+            body = self.json(query) if query else '{}'
             auth = {
                 'timeStamp_nonce': nonce,
                 'body': body,
@@ -919,7 +914,7 @@ class bitbns(Exchange):
         message = self.safe_string(response, 'msg')
         error = (code is not None) and (code != '200')
         if error or (message is not None):
-            feedback = self.id + ' ' + body
+            feedback = f'{self.id} {body}'
             self.throw_exactly_matched_exception(self.exceptions['exact'], code, feedback)
             self.throw_exactly_matched_exception(self.exceptions['exact'], message, feedback)
             self.throw_broadly_matched_exception(self.exceptions['broad'], message, feedback)

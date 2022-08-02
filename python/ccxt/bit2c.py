@@ -166,13 +166,13 @@ class bit2c(Exchange):
             'datetime': None,
         }
         codes = list(self.currencies.keys())
-        for i in range(0, len(codes)):
-            code = codes[i]
+        for code_ in codes:
+            code = code_
             account = self.account()
             currency = self.currency(code)
             uppercase = currency['id'].upper()
             if uppercase in balance:
-                account['free'] = self.safe_string(balance, 'AVAILABLE_' + uppercase)
+                account['free'] = self.safe_string(balance, f'AVAILABLE_{uppercase}')
                 account['total'] = self.safe_string(balance, uppercase)
             result[code] = account
         return self.parse_balance(result)
@@ -250,7 +250,7 @@ class bit2c(Exchange):
             'Pair': self.market_id(symbol),
         }
         if type == 'market':
-            method += 'MarketPrice' + self.capitalize(side)
+            method += f'MarketPrice{self.capitalize(side)}'
         else:
             request['Price'] = price
             request['Total'] = amount * price
@@ -269,7 +269,10 @@ class bit2c(Exchange):
 
     def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOpenOrders() requires a symbol argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchOpenOrders() requires a symbol argument'
+            )
+
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -285,9 +288,7 @@ class bit2c(Exchange):
         timestamp = self.safe_integer(order, 'created')
         price = self.safe_number(order, 'price')
         amount = self.safe_number(order, 'amount')
-        symbol = None
-        if market is not None:
-            symbol = market['symbol']
+        symbol = market['symbol'] if market is not None else None
         side = self.safe_value(order, 'type')
         if side == 0:
             side = 'buy'
@@ -370,13 +371,8 @@ class bit2c(Exchange):
             amountString = self.safe_string(trade, 'amount')
             side = self.safe_value(trade, 'isBid')
             if side is not None:
-                if side:
-                    side = 'buy'
-                else:
-                    side = 'sell'
-        symbol = None
-        if market is not None:
-            symbol = market['symbol']
+                side = 'buy' if side else 'sell'
+        symbol = market['symbol'] if market is not None else None
         price = self.parse_number(priceString)
         amount = self.parse_number(amountString)
         cost = self.parse_number(Precise.string_mul(priceString, amountString))
@@ -413,7 +409,7 @@ class bit2c(Exchange):
             auth = self.urlencode(query)
             if method == 'GET':
                 if query:
-                    url += '?' + auth
+                    url += f'?{auth}'
             else:
                 body = auth
             signature = self.hmac(self.encode(auth), self.encode(self.secret), hashlib.sha512, 'base64')
@@ -433,7 +429,7 @@ class bit2c(Exchange):
         #
         error = self.safe_string(response, 'error')
         if error is not None:
-            feedback = self.id + ' ' + body
+            feedback = f'{self.id} {body}'
             self.throw_exactly_matched_exception(self.exceptions['exact'], error, feedback)
             self.throw_broadly_matched_exception(self.exceptions['broad'], error, feedback)
             raise ExchangeError(feedback)  # unknown message

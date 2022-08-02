@@ -155,20 +155,20 @@ class bithumb(Exchange):
         result = []
         quoteCurrencies = self.safe_value(self.options, 'quoteCurrencies', {})
         quotes = list(quoteCurrencies.keys())
-        for i in range(0, len(quotes)):
-            quote = quotes[i]
+        for quote_ in quotes:
+            quote = quote_
             extension = self.safe_value(quoteCurrencies, quote, {})
-            method = 'publicGetTickerALL' + quote
+            method = f'publicGetTickerALL{quote}'
             response = getattr(self, method)(params)
             data = self.safe_value(response, 'data')
             currencyIds = list(data.keys())
-            for j in range(0, len(currencyIds)):
-                currencyId = currencyIds[j]
+            for currencyId_ in currencyIds:
+                currencyId = currencyId_
                 if currencyId == 'date':
                     continue
                 market = data[currencyId]
                 base = self.safe_currency_code(currencyId)
-                symbol = currencyId + '/' + quote
+                symbol = f'{currencyId}/{quote}'
                 active = True
                 if isinstance(market, list):
                     numElements = len(market)
@@ -211,14 +211,14 @@ class bithumb(Exchange):
         result = {'info': response}
         balances = self.safe_value(response, 'data')
         codes = list(self.currencies.keys())
-        for i in range(0, len(codes)):
-            code = codes[i]
+        for code_ in codes:
+            code = code_
             account = self.account()
             currency = self.currency(code)
             lowerCurrencyId = self.safe_string_lower(currency, 'id')
-            account['total'] = self.safe_string(balances, 'total_' + lowerCurrencyId)
-            account['used'] = self.safe_string(balances, 'in_use_' + lowerCurrencyId)
-            account['free'] = self.safe_string(balances, 'available_' + lowerCurrencyId)
+            account['total'] = self.safe_string(balances, f'total_{lowerCurrencyId}')
+            account['used'] = self.safe_string(balances, f'in_use_{lowerCurrencyId}')
+            account['free'] = self.safe_string(balances, f'available_{lowerCurrencyId}')
             result[code] = account
         return self.parse_balance(result)
 
@@ -333,8 +333,8 @@ class bithumb(Exchange):
         timestamp = self.safe_integer(data, 'date')
         tickers = self.omit(data, 'date')
         ids = list(tickers.keys())
-        for i in range(0, len(ids)):
-            id = ids[i]
+        for id_ in ids:
+            id = id_
             symbol = id
             market = None
             if id in self.markets_by_id:
@@ -463,8 +463,8 @@ class bithumb(Exchange):
                 transactionDate = parts[0]
                 transactionTime = parts[1]
                 if len(transactionTime) < 8:
-                    transactionTime = '0' + transactionTime
-                timestamp = self.parse8601(transactionDate + ' ' + transactionTime)
+                    transactionTime = f'0{transactionTime}'
+                timestamp = self.parse8601(f'{transactionDate} {transactionTime}')
             else:
                 timestamp = self.safe_integer_product(trade, 'transaction_date', 0.001)
         if timestamp is not None:
@@ -473,9 +473,7 @@ class bithumb(Exchange):
         side = self.safe_string(trade, 'type')
         side = 'sell' if (side == 'ask') else 'buy'
         id = self.safe_string(trade, 'cont_no')
-        symbol = None
-        if market is not None:
-            symbol = market['symbol']
+        symbol = market['symbol'] if market is not None else None
         priceString = self.safe_string(trade, 'price')
         amountString = self.safe_string_2(trade, 'units_traded', 'units')
         price = self.parse_number(priceString)
@@ -547,11 +545,11 @@ class bithumb(Exchange):
             request['price'] = price
             request['type'] = 'bid' if (side == 'buy') else 'ask'
         else:
-            method = 'privatePostTradeMarket' + self.capitalize(side)
+            method = f'privatePostTradeMarket{self.capitalize(side)}'
         response = getattr(self, method)(self.extend(request, params))
         id = self.safe_string(response, 'order_id')
         if id is None:
-            raise InvalidOrder(self.id + ' createOrder() did not return an order id')
+            raise InvalidOrder(f'{self.id} createOrder() did not return an order id')
         return {
             'info': response,
             'symbol': symbol,
@@ -562,7 +560,7 @@ class bithumb(Exchange):
 
     def fetch_order(self, id, symbol=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrder() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} fetchOrder() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -689,13 +687,16 @@ class bithumb(Exchange):
                 remaining = 0
             elif status != 'canceled':
                 remaining = amount
-        symbol = None
         baseId = self.safe_string(order, 'order_currency')
         quoteId = self.safe_string(order, 'payment_currency')
         base = self.safe_currency_code(baseId)
         quote = self.safe_currency_code(quoteId)
-        if (base is not None) and (quote is not None):
-            symbol = base + '/' + quote
+        symbol = (
+            f'{base}/{quote}'
+            if (base is not None) and (quote is not None)
+            else None
+        )
+
         if (symbol is None) and (market is not None):
             symbol = market['symbol']
         id = self.safe_string(order, 'order_id')
@@ -731,7 +732,10 @@ class bithumb(Exchange):
 
     def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOpenOrders() requires a symbol argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchOpenOrders() requires a symbol argument'
+            )
+
         self.load_markets()
         market = self.market(symbol)
         if limit is None:
@@ -767,9 +771,15 @@ class bithumb(Exchange):
     def cancel_order(self, id, symbol=None, params={}):
         side_in_params = ('side' in params)
         if not side_in_params:
-            raise ArgumentsRequired(self.id + ' cancelOrder() requires a `side` parameter(sell or buy)')
+            raise ArgumentsRequired(
+                f'{self.id} cancelOrder() requires a `side` parameter(sell or buy)'
+            )
+
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' cancelOrder() requires a `symbol` argument')
+            raise ArgumentsRequired(
+                f'{self.id} cancelOrder() requires a `symbol` argument'
+            )
+
         market = self.market(symbol)
         side = 'bid' if (params['side'] == 'buy') else 'ask'
         params = self.omit(params, ['side', 'currency'])
@@ -798,10 +808,13 @@ class bithumb(Exchange):
             'address': address,
             'currency': currency['id'],
         }
-        if currency == 'XRP' or currency == 'XMR' or currency == 'EOS' or currency == 'STEEM':
+        if currency in ['XRP', 'XMR', 'EOS', 'STEEM']:
             destination = self.safe_string(params, 'destination')
             if (tag is None) and (destination is None):
-                raise ArgumentsRequired(self.id + ' ' + code + ' withdraw() requires a tag argument or an extra destination param')
+                raise ArgumentsRequired(
+                    f'{self.id} {code} withdraw() requires a tag argument or an extra destination param'
+                )
+
             elif tag is not None:
                 request['destination'] = tag
         response = self.privatePostTradeBtcWithdrawal(self.extend(request, params))
@@ -814,12 +827,12 @@ class bithumb(Exchange):
         return self.milliseconds()
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
-        endpoint = '/' + self.implode_params(path, params)
+        endpoint = f'/{self.implode_params(path, params)}'
         url = self.implode_hostname(self.urls['api'][api]) + endpoint
         query = self.omit(params, self.extract_params(path))
         if api == 'public':
             if query:
-                url += '?' + self.urlencode(query)
+                url += f'?{self.urlencode(query)}'
         else:
             self.check_required_credentials()
             body = self.urlencode(self.extend({
@@ -848,12 +861,9 @@ class bithumb(Exchange):
             status = self.safe_string(response, 'status')
             message = self.safe_string(response, 'message')
             if status is not None:
-                if status == '0000':
+                if status == '0000' or message == '거래 진행중인 내역이 존재하지 않습니다':
                     return  # no error
-                elif message == '거래 진행중인 내역이 존재하지 않습니다':
-                    # https://github.com/ccxt/ccxt/issues/9017
-                    return  # no error
-                feedback = self.id + ' ' + body
+                feedback = f'{self.id} {body}'
                 self.throw_exactly_matched_exception(self.exceptions, status, feedback)
                 self.throw_exactly_matched_exception(self.exceptions, message, feedback)
                 raise ExchangeError(feedback)

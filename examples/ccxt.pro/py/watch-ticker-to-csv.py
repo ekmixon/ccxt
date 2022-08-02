@@ -6,7 +6,7 @@ from pprint import pprint
 
 
 async def watch_ticker_continuously(exchange, symbol):
-    filename = exchange.id + '-' + symbol.replace('/', '-') + '.csv'
+    filename = f'{exchange.id}-' + symbol.replace('/', '-') + '.csv'
     print('Watching', exchange.id, symbol, filename)
     keys = ['index', 'exchange', 'symbol', 'timestamp', 'open', 'high', 'low', 'close', 'baseVolume']
     with open(filename, 'w') as file:
@@ -42,7 +42,13 @@ async def main(loop):
         'huobipro': {}
     }
     symbols = ['BTC/USDT', 'ETH/USDT', 'LTC/USDT', 'XRP/USDT', 'BCH/USDT']
-    coroutines = [watch_tickers_continuously(loop, exchange_id, exchanges[exchange_id], symbols) for exchange_id in exchanges.keys()]
+    coroutines = [
+        watch_tickers_continuously(
+            loop, exchange_id, exchanges[exchange_id], symbols
+        )
+        for exchange_id in exchanges
+    ]
+
     return await gather(*coroutines)
 
 if __name__ == "__main__":

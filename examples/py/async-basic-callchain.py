@@ -5,7 +5,7 @@ import os
 import sys
 
 root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.append(root + '/python')
+sys.path.append(f'{root}/python')
 
 import ccxt.async_support as ccxt  # noqa: E402
 
@@ -13,6 +13,7 @@ import ccxt.async_support as ccxt  # noqa: E402
 async def run_all_exchanges(exchange_ids):
     results = {}
 
+    symbol = 'ETH/BTC'
     for exchange_id in exchange_ids:
 
         exchange = getattr(ccxt, exchange_id)({
@@ -22,7 +23,6 @@ async def run_all_exchanges(exchange_ids):
             }
         })
 
-        symbol = 'ETH/BTC'
         print('Exchange:', exchange_id)
 
         print(exchange_id, 'symbols:')
@@ -49,7 +49,7 @@ async def load_markets(exchange, symbol):
         result = await exchange.load_markets()
         return result
     except ccxt.BaseError as e:
-        print(type(e).__name__, str(e), str(e.args))
+        print(type(e).__name__, e, e.args)
         raise e
 
 
@@ -58,7 +58,7 @@ async def fetch_ticker(exchange, symbol):
         result = await exchange.fetch_ticker(symbol)
         return result
     except ccxt.BaseError as e:
-        print(type(e).__name__, str(e), str(e.args))
+        print(type(e).__name__, e, e.args)
         raise e
 
 
@@ -67,7 +67,7 @@ async def fetch_orderbook(exchange, symbol):
         result = await exchange.fetch_order_book(symbol)
         return result
     except ccxt.BaseError as e:
-        print(type(e).__name__, str(e), str(e.args))
+        print(type(e).__name__, e, e.args)
         raise e
 
 
@@ -75,4 +75,4 @@ if __name__ == '__main__':
     exchange_ids = ['bitfinex', 'okex', 'exmo']
     exchanges = []
     results = asyncio.get_event_loop().run_until_complete(run_all_exchanges(exchange_ids))
-    print([(exchange_id, ticker) for exchange_id, ticker in results.items()])
+    print(list(results.items()))

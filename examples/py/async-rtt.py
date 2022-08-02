@@ -6,7 +6,7 @@ from asyncio import get_event_loop
 from pprint import pprint
 
 root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.append(root + '/python')
+sys.path.append(f'{root}/python')
 
 import ccxt.async_support as ccxt  # noqa: E402
 # or
@@ -58,7 +58,7 @@ async def main(loop):
 
     results = []
 
-    for i in range(0, 10):
+    for _ in range(10):
         started = exchange.milliseconds()
         order = await exchange.create_order(symbol, 'limit', 'buy', amount, price)
         ended = exchange.milliseconds()

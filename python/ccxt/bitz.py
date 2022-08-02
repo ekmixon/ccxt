@@ -234,8 +234,8 @@ class bitz(Exchange):
         markets = self.safe_value(response, 'data')
         ids = list(markets.keys())
         result = []
-        for i in range(0, len(ids)):
-            id = ids[i]
+        for id_ in ids:
+            id = id_
             market = markets[id]
             numericId = self.safe_string(market, 'id')
             baseId = self.safe_string(market, 'coinFrom')
@@ -244,7 +244,7 @@ class bitz(Exchange):
             quote = quoteId.upper()
             base = self.safe_currency_code(base)
             quote = self.safe_currency_code(quote)
-            symbol = base + '/' + quote
+            symbol = f'{base}/{quote}'
             pricePrecisionString = self.safe_string(market, 'priceFloat')
             minPrice = self.parse_precision(pricePrecisionString)
             precision = {
@@ -313,7 +313,7 @@ class bitz(Exchange):
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
         }
-        for i in range(0, len(balances)):
+        for i in range(len(balances)):
             balance = balances[i]
             currencyId = self.safe_string(balance, 'name')
             code = self.safe_currency_code(currencyId)
@@ -471,8 +471,8 @@ class bitz(Exchange):
         timestamp = self.parse_microtime(self.safe_string(response, 'microtime'))
         result = {}
         ids = list(tickers.keys())
-        for i in range(0, len(ids)):
-            id = ids[i]
+        for id_ in ids:
+            id = id_
             ticker = tickers[id]
             market = None
             if id in self.markets_by_id:
@@ -486,7 +486,7 @@ class bitz(Exchange):
                     baseId, quoteId = id.split('_')
                     base = self.safe_currency_code(baseId)
                     quote = self.safe_currency_code(quoteId)
-                    symbol = base + '/' + quote
+                    symbol = f'{base}/{quote}'
             if symbol is not None:
                 result[symbol] = self.extend(ticker, {
                     'timestamp': timestamp,
@@ -550,9 +550,7 @@ class bitz(Exchange):
         #
         id = self.safe_string(trade, 'id')
         timestamp = self.safe_timestamp(trade, 'T')
-        symbol = None
-        if market is not None:
-            symbol = market['symbol']
+        symbol = market['symbol'] if market is not None else None
         priceString = self.safe_string(trade, 'p')
         amountString = self.safe_string(trade, 'n')
         price = self.parse_number(priceString)
@@ -636,9 +634,11 @@ class bitz(Exchange):
             request['size'] = min(limit, 300)  # 1-300
             if since is not None:
                 request['to'] = self.sum(since, limit * duration * 1000)
-        else:
-            if since is not None:
-                raise ArgumentsRequired(self.id + ' fetchOHLCV() requires a limit argument if the since argument is specified')
+        elif since is not None:
+            raise ArgumentsRequired(
+                f'{self.id} fetchOHLCV() requires a limit argument if the since argument is specified'
+            )
+
         response = self.marketGetKline(self.extend(request, params))
         #
         #     {
@@ -696,13 +696,13 @@ class bitz(Exchange):
             baseId = self.safe_string(order, 'coinFrom')
             quoteId = self.safe_string(order, 'coinTo')
             if (baseId is not None) and (quoteId is not None):
-                marketId = baseId + '_' + quoteId
+                marketId = f'{baseId}_{quoteId}'
                 if marketId in self.markets_by_id:
                     market = self.safe_value(self.markets_by_id, marketId)
                 else:
                     base = self.safe_currency_code(baseId)
                     quote = self.safe_currency_code(quoteId)
-                    symbol = base + '/' + quote
+                    symbol = f'{base}/{quote}'
         if market is not None:
             symbol = market['symbol']
         side = self.safe_string(order, 'flag')
@@ -744,7 +744,7 @@ class bitz(Exchange):
     def create_order(self, symbol, type, side, amount, price=None, params={}):
         self.load_markets()
         if type != 'limit':
-            raise ExchangeError(self.id + ' createOrder allows limit orders only')
+            raise ExchangeError(f'{self.id} createOrder allows limit orders only')
         market = self.market(symbol)
         orderType = '1' if (side == 'buy') else '2'
         if not self.password:
@@ -789,7 +789,6 @@ class bitz(Exchange):
         request = {
             'entrustSheetId': id,
         }
-        response = self.tradePostCancelEntrustSheet(self.extend(request, params))
         #
         #     {
         #         "status":200,
@@ -811,14 +810,13 @@ class bitz(Exchange):
         #         "source":"api"
         #     }
         #
-        return response
+        return self.tradePostCancelEntrustSheet(self.extend(request, params))
 
     def cancel_orders(self, ids, symbol=None, params={}):
         self.load_markets()
         request = {
             'ids': ','.join(ids),
         }
-        response = self.tradePostCancelEntrustSheet(self.extend(request, params))
         #
         #     {
         #         "status":200,
@@ -854,7 +852,7 @@ class bitz(Exchange):
         #         "source":"api"
         #     }
         #
-        return response
+        return self.tradePostCancelEntrustSheet(self.extend(request, params))
 
     def fetch_order(self, id, symbol=None, params={}):
         self.load_markets()
@@ -890,7 +888,10 @@ class bitz(Exchange):
 
     def fetch_orders_with_method(self, method, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOpenOrders() requires a symbol argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchOpenOrders() requires a symbol argument'
+            )
+
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -1049,13 +1050,16 @@ class bitz(Exchange):
         code = self.safe_currency_code(currencyId, currency)
         type = self.safe_string_lower(transaction, 'type')
         status = self.parse_transaction_status(self.safe_string(transaction, 'status'))
-        fee = None
         feeCost = self.safe_number(transaction, 'network_fee')
-        if feeCost is not None:
-            fee = {
+        fee = (
+            {
                 'cost': feeCost,
                 'code': code,
             }
+            if feeCost is not None
+            else None
+        )
+
         return {
             'id': self.safe_string(transaction, 'id'),
             'txid': self.safe_string(transaction, 'txid'),
@@ -1074,7 +1078,7 @@ class bitz(Exchange):
 
     def parse_transactions_by_type(self, type, transactions, code=None, since=None, limit=None):
         result = []
-        for i in range(0, len(transactions)):
+        for i in range(len(transactions)):
             transaction = self.parse_transaction(self.extend({
                 'type': type,
             }, transactions[i]))
@@ -1096,7 +1100,10 @@ class bitz(Exchange):
 
     def fetch_transactions_for_type(self, type, code=None, since=None, limit=None, params={}):
         if code is None:
-            raise ArgumentsRequired(self.id + ' fetchTransactions() requires a currency `code` argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchTransactions() requires a currency `code` argument'
+            )
+
         self.load_markets()
         currency = self.currency(code)
         request = {
@@ -1155,12 +1162,12 @@ class bitz(Exchange):
 
     def sign(self, path, api='market', method='GET', params={}, headers=None, body=None):
         baseUrl = self.implode_hostname(self.urls['api'][api])
-        url = baseUrl + '/' + self.capitalize(api) + '/' + path
+        url = f'{baseUrl}/{self.capitalize(api)}/{path}'
         query = None
         if api == 'market':
             query = self.urlencode(params)
             if len(query):
-                url += '?' + query
+                url += f'?{query}'
         else:
             self.check_required_credentials()
             body = self.rawencode(self.keysort(self.extend({
@@ -1168,7 +1175,7 @@ class bitz(Exchange):
                 'timeStamp': self.seconds(),
                 'nonce': self.nonce(),
             }, params)))
-            body += '&sign=' + self.hash(self.encode(body + self.secret))
+            body += f'&sign={self.hash(self.encode(body + self.secret))}'
             headers = {'Content-type': 'application/x-www-form-urlencoded'}
         return {'url': url, 'method': method, 'body': body, 'headers': headers}
 
@@ -1177,7 +1184,7 @@ class bitz(Exchange):
             return  # fallback to default error handler
         status = self.safe_string(response, 'status')
         if status is not None:
-            feedback = self.id + ' ' + body
+            feedback = f'{self.id} {body}'
             #
             #     {"status":-107,"msg":"","data":"","time":1535968848,"microtime":"0.89092200 1535968848","source":"api"}
             #
@@ -1186,10 +1193,9 @@ class bitz(Exchange):
                 #     {"status":200,"msg":"","data":-200031,"time":1535999806,"microtime":"0.85476800 1535999806","source":"api"}
                 #
                 code = self.safe_integer(response, 'data')
-                if code is not None:
-                    self.throw_exactly_matched_exception(self.exceptions, code, feedback)
-                    raise ExchangeError(feedback)
-                else:
+                if code is None:
                     return  # no error
+                self.throw_exactly_matched_exception(self.exceptions, code, feedback)
+                raise ExchangeError(feedback)
             self.throw_exactly_matched_exception(self.exceptions, status, feedback)
             raise ExchangeError(feedback)

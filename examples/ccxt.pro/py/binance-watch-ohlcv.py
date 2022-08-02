@@ -6,8 +6,8 @@ print('CCXT Pro version', ccxtpro.__version__)
 
 def table(values):
     first = values[0]
-    keys = list(first.keys()) if isinstance(first, dict) else range(0, len(first))
-    widths = [max([len(str(v[k])) for v in values]) for k in keys]
+    keys = list(first.keys()) if isinstance(first, dict) else range(len(first))
+    widths = [max(len(str(v[k])) for v in values) for k in keys]
     string = ' | '.join(['{:<' + str(w) + '}' for w in widths])
     return "\n".join([string.format(*[str(v[k]) for k in keys]) for v in values])
 
@@ -20,13 +20,13 @@ async def main(loop):
         #     'OHLCVLimit': 1000, # how many candles to store in memory by default
         # },
     })
-    symbol = 'ETH/USDT'  # or BNB/USDT, etc...
-    timeframe = '1m'  # 5m, 1h, 1d
-    limit = 10  # how many candles to return max
     method = 'watchOHLCV'
     if (method in exchange.has) and exchange.has[method]:
         max_iterations = 100000  # how many times to repeat the loop before exiting
-        for i in range(0, max_iterations):
+        symbol = 'ETH/USDT'  # or BNB/USDT, etc...
+        timeframe = '1m'  # 5m, 1h, 1d
+        limit = 10  # how many candles to return max
+        for i in range(max_iterations):
             try:
                 ohlcvs = await exchange.watch_ohlcv(symbol, timeframe, None, limit)
                 now = exchange.milliseconds()
@@ -35,7 +35,7 @@ async def main(loop):
                 print('-------------------------------------------------------------------------------')
                 print(table([[exchange.iso8601(o[0])] + o[1:] for o in ohlcvs]))
             except Exception as e:
-                print(type(e).__name__, str(e))
+                print(type(e).__name__, e)
                 break
         await exchange.close()
     else:

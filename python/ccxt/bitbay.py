@@ -261,8 +261,8 @@ class bitbay(Exchange):
         result = []
         items = self.safe_value(response, 'items')
         keys = list(items.keys())
-        for i in range(0, len(keys)):
-            key = keys[i]
+        for key_ in keys:
+            key = key_
             item = items[key]
             market = self.safe_value(item, 'market', {})
             first = self.safe_value(market, 'first', {})
@@ -272,7 +272,7 @@ class bitbay(Exchange):
             id = baseId + quoteId
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = base + '/' + quote
+            symbol = f'{base}/{quote}'
             precision = {
                 'amount': self.safe_integer(first, 'scale'),
                 'price': self.safe_integer(second, 'scale'),
@@ -399,18 +399,16 @@ class bitbay(Exchange):
         #
         items = self.safe_value(response, 'items')
         result = self.parse_trades(items, None, since, limit)
-        if symbol is None:
-            return result
-        return self.filter_by_symbol(result, symbol)
+        return result if symbol is None else self.filter_by_symbol(result, symbol)
 
     def fetch_balance(self, params={}):
         self.load_markets()
         response = self.v1_01PrivateGetBalancesBITBAYBalance(params)
         balances = self.safe_value(response, 'balances')
         if balances is None:
-            raise ExchangeError(self.id + ' empty balance response ' + self.json(response))
+            raise ExchangeError(f'{self.id} empty balance response {self.json(response)}')
         result = {'info': response}
-        for i in range(0, len(balances)):
+        for i in range(len(balances)):
             balance = balances[i]
             currencyId = self.safe_string(balance, 'currency')
             code = self.safe_currency_code(currencyId)
@@ -433,9 +431,7 @@ class bitbay(Exchange):
         timestamp = self.milliseconds()
         baseVolume = self.safe_number(ticker, 'volume')
         vwap = self.safe_number(ticker, 'vwap')
-        quoteVolume = None
-        if baseVolume is not None and vwap is not None:
-            quoteVolume = baseVolume * vwap
+        quoteVolume = None if baseVolume is None or vwap is None else baseVolume * vwap
         last = self.safe_number(ticker, 'last')
         return self.safe_ticker({
             'symbol': symbol,
@@ -1047,7 +1043,7 @@ class bitbay(Exchange):
                 'orderId': id,
             })
             cost = 0
-            for i in range(0, len(trades)):
+            for i in range(len(trades)):
                 filled = self.sum(filled, trades[i]['amount'])
                 cost = self.sum(cost, trades[i]['cost'])
         remaining = amount - filled
@@ -1078,7 +1074,10 @@ class bitbay(Exchange):
             raise ExchangeError(self.id + ' cancelOrder() requires a `side` parameter("buy" or "sell")')
         price = self.safe_value(params, 'price')
         if price is None:
-            raise ExchangeError(self.id + ' cancelOrder() requires a `price` parameter(float or string)')
+            raise ExchangeError(
+                f'{self.id} cancelOrder() requires a `price` parameter(float or string)'
+            )
+
         self.load_markets()
         market = self.market(symbol)
         tradingSymbol = market['baseId'] + '-' + market['quoteId']
@@ -1118,7 +1117,7 @@ class bitbay(Exchange):
         else:
             method = 'privatePostTransfer'
             if tag is not None:
-                address += '?dt=' + str(tag)
+                address += f'?dt={str(tag)}'
             request['address'] = address
         response = getattr(self, method)(self.extend(request, params))
         return {
@@ -1130,23 +1129,23 @@ class bitbay(Exchange):
         url = self.implode_hostname(self.urls['api'][api])
         if api == 'public':
             query = self.omit(params, self.extract_params(path))
-            url += '/' + self.implode_params(path, params) + '.json'
+            url += f'/{self.implode_params(path, params)}.json'
             if query:
-                url += '?' + self.urlencode(query)
+                url += f'?{self.urlencode(query)}'
         elif api == 'v1_01Public':
             query = self.omit(params, self.extract_params(path))
-            url += '/' + self.implode_params(path, params)
+            url += f'/{self.implode_params(path, params)}'
             if query:
-                url += '?' + self.urlencode(query)
+                url += f'?{self.urlencode(query)}'
         elif api == 'v1_01Private':
             self.check_required_credentials()
             query = self.omit(params, self.extract_params(path))
-            url += '/' + self.implode_params(path, params)
+            url += f'/{self.implode_params(path, params)}'
             nonce = str(self.milliseconds())
             payload = None
             if method != 'POST':
                 if query:
-                    url += '?' + self.urlencode(query)
+                    url += f'?{self.urlencode(query)}'
                 payload = self.apiKey + nonce
             elif body is None:
                 body = self.json(query)
@@ -1201,7 +1200,7 @@ class bitbay(Exchange):
             #      510 Invalid market name
             #
             code = self.safe_string(response, 'code')  # always an integer
-            feedback = self.id + ' ' + body
+            feedback = f'{self.id} {body}'
             self.throw_exactly_matched_exception(self.exceptions, code, feedback)
             raise ExchangeError(feedback)
         elif 'status' in response:
@@ -1211,8 +1210,8 @@ class bitbay(Exchange):
             status = self.safe_string(response, 'status')
             if status == 'Fail':
                 errors = self.safe_value(response, 'errors')
-                feedback = self.id + ' ' + body
-                for i in range(0, len(errors)):
+                feedback = f'{self.id} {body}'
+                for i in range(len(errors)):
                     error = errors[i]
                     self.throw_exactly_matched_exception(self.exceptions, error, feedback)
                 raise ExchangeError(feedback)

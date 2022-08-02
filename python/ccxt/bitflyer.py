@@ -103,7 +103,7 @@ class bitflyer(Exchange):
         markets = self.array_concat(jp_markets, us_markets)
         markets = self.array_concat(markets, eu_markets)
         result = []
-        for i in range(0, len(markets)):
+        for i in range(len(markets)):
             market = markets[i]
             id = self.safe_string(market, 'product_code')
             currencies = id.split('_')
@@ -113,7 +113,7 @@ class bitflyer(Exchange):
             quote = None
             numCurrencies = len(currencies)
             if numCurrencies == 1:
-                baseId = id[0:3]
+                baseId = id[:3]
                 quoteId = id[3:6]
             elif numCurrencies == 2:
                 baseId = currencies[0]
@@ -123,7 +123,7 @@ class bitflyer(Exchange):
                 quoteId = currencies[2]
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = (base + '/' + quote) if (numCurrencies == 2) else id
+            symbol = f'{base}/{quote}' if numCurrencies == 2 else id
             fees = self.safe_value(self.fees, symbol, self.fees['trading'])
             maker = self.safe_value(fees, 'maker', self.fees['trading']['maker'])
             taker = self.safe_value(fees, 'taker', self.fees['trading']['taker'])
@@ -175,7 +175,7 @@ class bitflyer(Exchange):
         #     ]
         #
         result = {'info': response}
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             balance = response[i]
             currencyId = self.safe_string(balance, 'currency_code')
             code = self.safe_currency_code(currencyId)
@@ -231,12 +231,11 @@ class bitflyer(Exchange):
 
     def parse_trade(self, trade, market=None):
         side = self.safe_string_lower(trade, 'side')
-        if side is not None:
-            if len(side) < 1:
-                side = None
+        if side is not None and len(side) < 1:
+            side = None
         order = None
         if side is not None:
-            id = side + '_child_order_acceptance_id'
+            id = f'{side}_child_order_acceptance_id'
             if id in trade:
                 order = trade[id]
         if order is None:
@@ -248,9 +247,7 @@ class bitflyer(Exchange):
         amount = self.parse_number(amountString)
         cost = self.parse_number(Precise.string_mul(priceString, amountString))
         id = self.safe_string(trade, 'id')
-        symbol = None
-        if market is not None:
-            symbol = market['symbol']
+        symbol = market['symbol'] if market is not None else None
         return {
             'id': id,
             'info': trade,
@@ -295,7 +292,10 @@ class bitflyer(Exchange):
 
     def cancel_order(self, id, symbol=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' cancelOrder() requires a `symbol` argument')
+            raise ArgumentsRequired(
+                f'{self.id} cancelOrder() requires a `symbol` argument'
+            )
+
         self.load_markets()
         request = {
             'product_code': self.market_id(symbol),
@@ -359,7 +359,10 @@ class bitflyer(Exchange):
 
     def fetch_orders(self, symbol=None, since=None, limit=100, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrders() requires a `symbol` argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchOrders() requires a `symbol` argument'
+            )
+
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -386,16 +389,19 @@ class bitflyer(Exchange):
 
     def fetch_order(self, id, symbol=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrder() requires a `symbol` argument')
+            raise ArgumentsRequired(f'{self.id} fetchOrder() requires a `symbol` argument')
         orders = self.fetch_orders(symbol)
         ordersById = self.index_by(orders, 'id')
         if id in ordersById:
             return ordersById[id]
-        raise OrderNotFound(self.id + ' No order found with id ' + id)
+        raise OrderNotFound(f'{self.id} No order found with id {id}')
 
     def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchMyTrades() requires a `symbol` argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchMyTrades() requires a `symbol` argument'
+            )
+
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -408,12 +414,14 @@ class bitflyer(Exchange):
 
     def fetch_positions(self, symbols=None, params={}):
         if symbols is None:
-            raise ArgumentsRequired(self.id + ' fetchPositions() requires a `symbols` argument, exactly one symbol in an array')
+            raise ArgumentsRequired(
+                f'{self.id} fetchPositions() requires a `symbols` argument, exactly one symbol in an array'
+            )
+
         self.load_markets()
         request = {
             'product_code': self.market_ids(symbols),
         }
-        response = self.privateGetpositions(self.extend(request, params))
         #
         #     [
         #         {
@@ -432,13 +440,16 @@ class bitflyer(Exchange):
         #     ]
         #
         # todo unify parsePosition/parsePositions
-        return response
+        return self.privateGetpositions(self.extend(request, params))
 
     def withdraw(self, code, amount, address, tag=None, params={}):
         self.check_address(address)
         self.load_markets()
-        if code != 'JPY' and code != 'USD' and code != 'EUR':
-            raise ExchangeError(self.id + ' allows withdrawing JPY, USD, EUR only, ' + code + ' is not supported')
+        if code not in ['JPY', 'USD', 'EUR']:
+            raise ExchangeError(
+                f'{self.id} allows withdrawing JPY, USD, EUR only, {code} is not supported'
+            )
+
         currency = self.currency(code)
         request = {
             'currency_code': currency['id'],
@@ -453,23 +464,21 @@ class bitflyer(Exchange):
         }
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
-        request = '/' + self.version + '/'
+        request = f'/{self.version}/'
         if api == 'private':
             request += 'me/'
         request += path
-        if method == 'GET':
-            if params:
-                request += '?' + self.urlencode(params)
+        if method == 'GET' and params:
+            request += f'?{self.urlencode(params)}'
         baseUrl = self.implode_hostname(self.urls['api'])
         url = baseUrl + request
         if api == 'private':
             self.check_required_credentials()
             nonce = str(self.nonce())
             auth = ''.join([nonce, method, request])
-            if params:
-                if method != 'GET':
-                    body = self.json(params)
-                    auth += body
+            if params and method != 'GET':
+                body = self.json(params)
+                auth += body
             headers = {
                 'ACCESS-KEY': self.apiKey,
                 'ACCESS-TIMESTAMP': nonce,

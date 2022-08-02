@@ -88,7 +88,13 @@ class bitstamp1(Exchange):
 
     def fetch_order_book(self, symbol, limit=None, params={}):
         if symbol != 'BTC/USD':
-            raise ExchangeError(self.id + ' ' + self.version + " fetchOrderBook doesn't support " + symbol + ', use it for BTC/USD only')
+            raise ExchangeError(
+                f'{self.id} {self.version}'
+                + " fetchOrderBook doesn't support "
+                + symbol
+                + ', use it for BTC/USD only'
+            )
+
         self.load_markets()
         orderbook = self.publicGetOrderBook(params)
         timestamp = self.safe_timestamp(orderbook, 'timestamp')
@@ -96,15 +102,19 @@ class bitstamp1(Exchange):
 
     def fetch_ticker(self, symbol, params={}):
         if symbol != 'BTC/USD':
-            raise ExchangeError(self.id + ' ' + self.version + " fetchTicker doesn't support " + symbol + ', use it for BTC/USD only')
+            raise ExchangeError(
+                f'{self.id} {self.version}'
+                + " fetchTicker doesn't support "
+                + symbol
+                + ', use it for BTC/USD only'
+            )
+
         self.load_markets()
         ticker = self.publicGetTicker(params)
         timestamp = self.safe_timestamp(ticker, 'timestamp')
         vwap = self.safe_number(ticker, 'vwap')
         baseVolume = self.safe_number(ticker, 'volume')
-        quoteVolume = None
-        if baseVolume is not None and vwap is not None:
-            quoteVolume = baseVolume * vwap
+        quoteVolume = None if baseVolume is None or vwap is None else baseVolume * vwap
         last = self.safe_number(ticker, 'last')
         return {
             'symbol': symbol,
@@ -133,18 +143,18 @@ class bitstamp1(Exchange):
         timestamp = self.safe_timestamp_2(trade, 'date', 'datetime')
         side = 'buy' if (trade['type'] == 0) else 'sell'
         orderId = self.safe_string(trade, 'order_id')
-        if 'currency_pair' in trade:
-            if trade['currency_pair'] in self.markets_by_id:
-                market = self.markets_by_id[trade['currency_pair']]
+        if (
+            'currency_pair' in trade
+            and trade['currency_pair'] in self.markets_by_id
+        ):
+            market = self.markets_by_id[trade['currency_pair']]
         id = self.safe_string(trade, 'tid')
         priceString = self.safe_string(trade, 'price')
         amountString = self.safe_string(trade, 'amount')
         price = self.parse_number(priceString)
         amount = self.parse_number(amountString)
         cost = self.parse_number(Precise.string_mul(priceString, amountString))
-        symbol = None
-        if market is not None:
-            symbol = market['symbol']
+        symbol = market['symbol'] if market is not None else None
         return {
             'id': id,
             'info': trade,
@@ -163,7 +173,13 @@ class bitstamp1(Exchange):
 
     def fetch_trades(self, symbol, since=None, limit=None, params={}):
         if symbol != 'BTC/USD':
-            raise BadSymbol(self.id + ' ' + self.version + " fetchTrades doesn't support " + symbol + ', use it for BTC/USD only')
+            raise BadSymbol(
+                f'{self.id} {self.version}'
+                + " fetchTrades doesn't support "
+                + symbol
+                + ', use it for BTC/USD only'
+            )
+
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -176,24 +192,24 @@ class bitstamp1(Exchange):
         balance = self.privatePostBalance(params)
         result = {'info': balance}
         codes = list(self.currencies.keys())
-        for i in range(0, len(codes)):
-            code = codes[i]
+        for code_ in codes:
+            code = code_
             currency = self.currency(code)
             currencyId = currency['id']
             account = self.account()
-            account['free'] = self.safe_string(balance, currencyId + '_available')
-            account['used'] = self.safe_string(balance, currencyId + '_reserved')
-            account['total'] = self.safe_string(balance, currencyId + '_balance')
+            account['free'] = self.safe_string(balance, f'{currencyId}_available')
+            account['used'] = self.safe_string(balance, f'{currencyId}_reserved')
+            account['total'] = self.safe_string(balance, f'{currencyId}_balance')
             result[code] = account
         return self.parse_balance(result)
 
     def create_order(self, symbol, type, side, amount, price=None, params={}):
         if type != 'limit':
-            raise ExchangeError(self.id + ' ' + self.version + ' accepts limit orders only')
+            raise ExchangeError(f'{self.id} {self.version} accepts limit orders only')
         if symbol != 'BTC/USD':
-            raise ExchangeError(self.id + ' v1 supports BTC/USD orders only')
+            raise ExchangeError(f'{self.id} v1 supports BTC/USD orders only')
         self.load_markets()
-        method = 'privatePost' + self.capitalize(side)
+        method = f'privatePost{self.capitalize(side)}'
         request = {
             'amount': amount,
             'price': price,
@@ -227,9 +243,7 @@ class bitstamp1(Exchange):
 
     def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         self.load_markets()
-        market = None
-        if symbol is not None:
-            market = self.market(symbol)
+        market = self.market(symbol) if symbol is not None else None
         pair = market['id'] if market else 'all'
         request = {
             'id': pair,
@@ -238,14 +252,14 @@ class bitstamp1(Exchange):
         return self.parse_trades(response, market, since, limit)
 
     def fetch_order(self, id, symbol=None, params={}):
-        raise NotSupported(self.id + ' fetchOrder is not implemented yet')
+        raise NotSupported(f'{self.id} fetchOrder is not implemented yet')
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
         url = self.urls['api'] + '/' + self.implode_params(path, params)
         query = self.omit(params, self.extract_params(path))
         if api == 'public':
             if query:
-                url += '?' + self.urlencode(query)
+                url += f'?{self.urlencode(query)}'
         else:
             self.check_required_credentials()
             nonce = str(self.nonce())
@@ -267,4 +281,4 @@ class bitstamp1(Exchange):
             return
         status = self.safe_string(response, 'status')
         if status == 'error':
-            raise ExchangeError(self.id + ' ' + self.json(response))
+            raise ExchangeError(f'{self.id} {self.json(response)}')

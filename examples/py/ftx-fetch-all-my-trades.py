@@ -4,7 +4,7 @@ import os
 import sys
 
 root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.append(root + '/python')
+sys.path.append(f'{root}/python')
 
 import ccxt  # noqa: E402
 
@@ -52,10 +52,10 @@ while True:
         print('Done')
         break
 
-        
+
 all_trades = list(all_trades.values())
 
 print('Fetched', len(all_trades), 'trades')
-for i in range(0, len(all_trades)):
+for i in range(len(all_trades)):
     trade = all_trades[i]
     print(i, trade['id'], trade['datetime'], trade['amount'])

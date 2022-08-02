@@ -373,7 +373,7 @@ class aax(Exchange):
         #
         data = self.safe_value(response, 'data')
         result = []
-        for i in range(0, len(data)):
+        for i in range(len(data)):
             market = data[i]
             id = self.safe_string(market, 'symbol')
             baseId = self.safe_string(market, 'base')
@@ -397,7 +397,7 @@ class aax(Exchange):
                 quanto = (settleType == 'quanto')
             symbol = id
             if type == 'spot':
-                symbol = base + '/' + quote
+                symbol = f'{base}/{quote}'
             precision = {
                 'amount': self.safe_number(market, 'lotSize'),
                 'price': self.safe_number(market, 'tickSize'),
@@ -471,7 +471,7 @@ class aax(Exchange):
         #
         result = {}
         data = self.safe_value(response, 'data', [])
-        for i in range(0, len(data)):
+        for i in range(len(data)):
             currency = data[i]
             id = self.safe_string(currency, 'chain')
             name = self.safe_string(currency, 'displayName')
@@ -572,7 +572,7 @@ class aax(Exchange):
         tickers = self.safe_value(response, 'tickers', [])
         result = []
         timestamp = self.safe_integer(response, 't')
-        for i in range(0, len(tickers)):
+        for i in range(len(tickers)):
             ticker = self.parse_ticker(self.extend(tickers[i], {'t': timestamp}))
             result.append(ticker)
         return self.filter_by_array(result, 'symbol', symbols)
@@ -582,9 +582,11 @@ class aax(Exchange):
         market = self.market(symbol)
         if limit is None:
             limit = 20
-        else:
-            if (limit != 20) and (limit != 50):
-                raise BadRequest(self.id + ' fetchOrderBook() limit argument must be None, 20 or 50')
+        elif limit not in [20, 50]:
+            raise BadRequest(
+                f'{self.id} fetchOrderBook() limit argument must be None, 20 or 50'
+            )
+
         request = {
             'symbol': market['id'],
             'level': limit,  # required
@@ -656,11 +658,9 @@ class aax(Exchange):
         if timestamp is None:
             timestamp = self.parse8601(self.safe_string(trade, 'createTime'))
         id = self.safe_string_2(trade, 'tid', 'tradeID')
-        symbol = None
         marketId = self.safe_string(trade, 'symbol')
         market = self.safe_market(marketId, market)
-        if market is not None:
-            symbol = market['symbol']
+        symbol = market['symbol'] if market is not None else None
         priceString = self.safe_string_2(trade, 'p', 'filledPrice')
         amountString = self.safe_string_2(trade, 'q', 'filledQty')
         orderId = self.safe_string(trade, 'orderID')
@@ -823,7 +823,7 @@ class aax(Exchange):
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
         }
-        for i in range(0, len(data)):
+        for i in range(len(data)):
             balance = data[i]
             balanceType = self.safe_string(balance, 'purseType')
             if balanceType == purseType:
@@ -860,8 +860,11 @@ class aax(Exchange):
             params = self.omit(params, ['clOrdID', 'clientOrderId'])
         stopPrice = self.safe_number(params, 'stopPrice')
         if stopPrice is None:
-            if (orderType == 'STOP-LIMIT') or (orderType == 'STOP'):
-                raise ArgumentsRequired(self.id + ' createOrder() requires a stopPrice parameter for ' + orderType + ' orders')
+            if orderType in ['STOP-LIMIT', 'STOP']:
+                raise ArgumentsRequired(
+                    f'{self.id} createOrder() requires a stopPrice parameter for {orderType} orders'
+                )
+
         else:
             if orderType == 'LIMIT':
                 orderType = 'STOP-LIMIT'
@@ -869,7 +872,7 @@ class aax(Exchange):
                 orderType = 'STOP'
             request['stopPrice'] = self.price_to_precision(symbol, stopPrice)
             params = self.omit(params, 'stopPrice')
-        if orderType == 'LIMIT' or orderType == 'STOP-LIMIT':
+        if orderType in ['LIMIT', 'STOP-LIMIT']:
             request['price'] = self.price_to_precision(symbol, price)
         request['orderType'] = orderType
         method = None
@@ -1169,7 +1172,10 @@ class aax(Exchange):
 
     def cancel_all_orders(self, symbol=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' cancelAllOrders() requires a symbol argument')
+            raise ArgumentsRequired(
+                f'{self.id} cancelAllOrders() requires a symbol argument'
+            )
+
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -1180,7 +1186,6 @@ class aax(Exchange):
             method = 'privateDeleteSpotOrdersCancelAll'
         elif market['futures']:
             method = 'privateDeleteFuturesOrdersCancelAll'
-        response = getattr(self, method)(self.extend(request, params))
         #
         #     {
         #         "code":1,
@@ -1192,7 +1197,7 @@ class aax(Exchange):
         #         "ts":1572597435470
         #     }
         #
-        return response
+        return getattr(self, method)(self.extend(request, params))
 
     def fetch_order(self, id, symbol=None, params={}):
         self.load_markets()
@@ -1209,9 +1214,12 @@ class aax(Exchange):
         order = self.safe_value(orders, 0)
         if order is None:
             if clientOrderId is None:
-                raise OrderNotFound(self.id + ' fetchOrder() could not find order id ' + id)
+                raise OrderNotFound(f'{self.id} fetchOrder() could not find order id {id}')
             else:
-                raise OrderNotFound(self.id + ' fetchOrder() could not find order clientOrderID ' + clientOrderId)
+                raise OrderNotFound(
+                    f'{self.id} fetchOrder() could not find order clientOrderID {clientOrderId}'
+                )
+
         return order
 
     def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
@@ -1752,16 +1760,16 @@ class aax(Exchange):
         return self.milliseconds()
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
-        url = '/' + self.implode_params(path, params)
+        url = f'/{self.implode_params(path, params)}'
         query = self.omit(params, self.extract_params(path))
         if api == 'v1':
             if query:
-                url += '?' + self.urlencode(query)
+                url += f'?{self.urlencode(query)}'
         else:
-            url = '/' + self.version + url
+            url = f'/{self.version}{url}'
             if api == 'public':
                 if query:
-                    url += '?' + self.urlencode(query)
+                    url += f'?{self.urlencode(query)}'
             elif api == 'private':
                 self.check_required_credentials()
                 nonce = str(self.nonce())
@@ -1769,10 +1777,10 @@ class aax(Exchange):
                     'X-ACCESS-KEY': self.apiKey,
                     'X-ACCESS-NONCE': nonce,
                 }
-                auth = nonce + ':' + method
+                auth = f'{nonce}:{method}'
                 if method == 'GET':
                     if query:
-                        url += '?' + self.urlencode(query)
+                        url += f'?{self.urlencode(query)}'
                     auth += url
                 else:
                     headers['Content-Type'] = 'application/json'
@@ -1791,6 +1799,6 @@ class aax(Exchange):
         #
         errorCode = self.safe_string(response, 'code')
         if (errorCode is not None) and (errorCode != '1'):
-            feedback = self.id + ' ' + self.json(response)
+            feedback = f'{self.id} {self.json(response)}'
             self.throw_exactly_matched_exception(self.exceptions['exact'], errorCode, feedback)
             self.throw_broadly_matched_exception(self.exceptions['broad'], body, feedback)

@@ -217,7 +217,7 @@ class bibox(Exchange):
         result2 = self.safe_value(response2, 'result', {})
         minCosts = self.safe_value(result2, 'min_trade_money', {})
         result = []
-        for i in range(0, len(markets)):
+        for i in range(len(markets)):
             market = markets[i]
             numericId = self.safe_integer(market, 'id')
             id = self.safe_string(market, 'pair')
@@ -229,7 +229,7 @@ class bibox(Exchange):
                 quoteId = self.safe_string(parts, 1)
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = base + '/' + quote
+            symbol = f'{base}/{quote}'
             type = 'spot'
             spot = True
             areaId = self.safe_integer(market, 'area_id')
@@ -281,7 +281,7 @@ class bibox(Exchange):
             quoteId = self.safe_string(ticker, 'currency_symbol')
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = base + '/' + quote
+            symbol = f'{base}/{quote}'
         last = self.safe_number(ticker, 'last')
         change = self.safe_number(ticker, 'change')
         baseVolume = self.safe_number_2(ticker, 'vol', 'vol24H')
@@ -335,18 +335,16 @@ class bibox(Exchange):
         timestamp = self.safe_integer_2(trade, 'time', 'createdAt')
         side = self.safe_integer_2(trade, 'side', 'order_side')
         side = 'buy' if (side == 1) else 'sell'
-        symbol = None
         if market is None:
             marketId = self.safe_string(trade, 'pair')
             if marketId is None:
                 baseId = self.safe_string(trade, 'coin_symbol')
                 quoteId = self.safe_string(trade, 'currency_symbol')
                 if (baseId is not None) and (quoteId is not None):
-                    marketId = baseId + '_' + quoteId
+                    marketId = f'{baseId}_{quoteId}'
             if marketId in self.markets_by_id:
                 market = self.markets_by_id[marketId]
-        if market is not None:
-            symbol = market['symbol']
+        symbol = market['symbol'] if market is not None else None
         fee = None
         feeCostString = self.safe_string(trade, 'fee')
         feeCurrency = self.safe_string(trade, 'fee_symbol')
@@ -483,7 +481,7 @@ class bibox(Exchange):
         #
         currencies = self.safe_value(response, 'result')
         result = {}
-        for i in range(0, len(currencies)):
+        for i in range(len(currencies)):
             currency = currencies[i]
             id = self.safe_string(currency, 'symbol')
             name = self.safe_string(currency, 'name')  # contains hieroglyphs causing python ASCII bug
@@ -565,7 +563,7 @@ class bibox(Exchange):
         #
         currencies = self.safe_value(response, 'result')
         result = {}
-        for i in range(0, len(currencies)):
+        for i in range(len(currencies)):
             currency = currencies[i]
             id = self.safe_string(currency, 'symbol')
             name = currency['name']  # contains hieroglyphs causing python ASCII bug
@@ -600,11 +598,15 @@ class bibox(Exchange):
         type = self.safe_string(params, 'type', 'assets')
         params = self.omit(params, 'type')
         request = {
-            'cmd': 'transfer/' + type,  # assets, mainAssets
-            'body': self.extend({
-                'select': 1,  # return full info
-            }, params),
+            'cmd': f'transfer/{type}',
+            'body': self.extend(
+                {
+                    'select': 1,  # return full info
+                },
+                params,
+            ),
         }
+
         response = self.privatePostTransfer(request)
         balances = self.safe_value(response, 'result')
         result = {'info': balances}
@@ -614,8 +616,8 @@ class bibox(Exchange):
         else:
             indexed = balances
         keys = list(indexed.keys())
-        for i in range(0, len(keys)):
-            id = keys[i]
+        for key in keys:
+            id = key
             code = id.upper()
             if code.find('TOTAL_') >= 0:
                 code = code[6:]
@@ -641,16 +643,13 @@ class bibox(Exchange):
         if code is not None:
             currency = self.currency(code)
             request['symbol'] = currency['id']
-        if limit is not None:
-            request['size'] = limit
-        else:
-            request['size'] = 100
+        request['size'] = limit if limit is not None else 100
         response = self.privatePostTransfer({
             'cmd': 'transfer/transferInList',
             'body': self.extend(request, params),
         })
         deposits = self.safe_value(response['result'], 'items', [])
-        for i in range(0, len(deposits)):
+        for i in range(len(deposits)):
             deposits[i]['type'] = 'deposit'
         return self.parse_transactions(deposits, currency, since, limit)
 
@@ -663,16 +662,13 @@ class bibox(Exchange):
         if code is not None:
             currency = self.currency(code)
             request['symbol'] = currency['id']
-        if limit is not None:
-            request['size'] = limit
-        else:
-            request['size'] = 100
+        request['size'] = limit if limit is not None else 100
         response = self.privatePostTransfer({
             'cmd': 'transfer/transferOutList',
             'body': self.extend(request, params),
         })
         withdrawals = self.safe_value(response['result'], 'items', [])
-        for i in range(0, len(withdrawals)):
+        for i in range(len(withdrawals)):
             withdrawals[i]['type'] = 'withdrawal'
         return self.parse_transactions(withdrawals, currency, since, limit)
 
@@ -780,8 +776,7 @@ class bibox(Exchange):
                 'orders_id': id,
             }, params),
         }
-        response = self.privatePostOrderpending(request)
-        return response
+        return self.privatePostOrderpending(request)
 
     def fetch_order(self, id, symbol=None, params={}):
         self.load_markets()
@@ -795,21 +790,17 @@ class bibox(Exchange):
         response = self.privatePostOrderpending(request)
         order = self.safe_value(response, 'result')
         if self.is_empty(order):
-            raise OrderNotFound(self.id + ' order ' + id + ' not found')
+            raise OrderNotFound(f'{self.id} order {id} not found')
         return self.parse_order(order)
 
     def parse_order(self, order, market=None):
-        symbol = None
         if market is None:
-            marketId = None
             baseId = self.safe_string(order, 'coin_symbol')
             quoteId = self.safe_string(order, 'currency_symbol')
-            if (baseId is not None) and (quoteId is not None):
-                marketId = baseId + '_' + quoteId
+            marketId = None if baseId is None or quoteId is None else f'{baseId}_{quoteId}'
             if marketId in self.markets_by_id:
                 market = self.markets_by_id[marketId]
-        if market is not None:
-            symbol = market['symbol']
+        symbol = market['symbol'] if market is not None else None
         rawType = self.safe_string(order, 'order_type')
         type = 'market' if (rawType == '1') else 'limit'
         timestamp = self.safe_integer(order, 'createdAt')
@@ -823,12 +814,15 @@ class bibox(Exchange):
         status = self.parse_order_status(self.safe_string(order, 'status'))
         id = self.safe_string(order, 'id')
         feeCost = self.safe_number(order, 'fee')
-        fee = None
-        if feeCost is not None:
-            fee = {
+        fee = (
+            {
                 'cost': feeCost,
                 'currency': None,
             }
+            if feeCost is not None
+            else None
+        )
+
         return self.safe_order({
             'info': order,
             'id': id,
@@ -872,7 +866,7 @@ class bibox(Exchange):
         if symbol is not None:
             market = self.market(symbol)
             pair = market['id']
-        size = limit if limit else 200
+        size = limit or 200
         request = {
             'cmd': 'orderpending/orderPendingList',
             'body': self.extend({
@@ -888,7 +882,10 @@ class bibox(Exchange):
 
     def fetch_closed_orders(self, symbol=None, since=None, limit=200, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchClosedOrders() requires a `symbol` argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchClosedOrders() requires a `symbol` argument'
+            )
+
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -906,10 +903,13 @@ class bibox(Exchange):
 
     def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchMyTrades() requires a `symbol` argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchMyTrades() requires a `symbol` argument'
+            )
+
         self.load_markets()
         market = self.market(symbol)
-        size = limit if limit else 200
+        size = limit or 200
         request = {
             'cmd': 'orderpending/orderHistoryList',
             'body': self.extend({
@@ -963,11 +963,16 @@ class bibox(Exchange):
         self.check_address(address)
         self.load_markets()
         currency = self.currency(code)
-        if self.password is None:
-            if not ('trade_pwd' in params):
-                raise ExchangeError(self.id + ' withdraw() requires self.password set on the exchange instance or a trade_pwd parameter')
-        if not ('totp_code' in params):
-            raise ExchangeError(self.id + ' withdraw() requires a totp_code parameter for 2FA authentication')
+        if self.password is None and 'trade_pwd' not in params:
+            raise ExchangeError(
+                f'{self.id} withdraw() requires self.password set on the exchange instance or a trade_pwd parameter'
+            )
+
+        if 'totp_code' not in params:
+            raise ExchangeError(
+                f'{self.id} withdraw() requires a totp_code parameter for 2FA authentication'
+            )
+
         request = {
             'trade_pwd': self.password,
             'coin_symbol': currency['id'],
@@ -993,7 +998,7 @@ class bibox(Exchange):
         info = {}
         if codes is None:
             codes = list(self.currencies.keys())
-        for i in range(0, len(codes)):
+        for i in range(len(codes)):
             code = codes[i]
             currency = self.currency(code)
             request = {
@@ -1018,7 +1023,7 @@ class bibox(Exchange):
             if method != 'GET':
                 body = {'cmds': cmds}
             elif params:
-                url += '?' + self.urlencode(params)
+                url += f'?{self.urlencode(params)}'
         elif api == 'v2private':
             self.check_required_credentials()
             url = self.implode_hostname(self.urls['api']) + '/v2/' + path
@@ -1046,16 +1051,13 @@ class bibox(Exchange):
         if 'error' in response:
             if 'code' in response['error']:
                 code = self.safe_string(response['error'], 'code')
-                feedback = self.id + ' ' + body
+                feedback = f'{self.id} {body}'
                 self.throw_exactly_matched_exception(self.exceptions, code, feedback)
                 raise ExchangeError(feedback)
-            raise ExchangeError(self.id + ' ' + body)
-        if not ('result' in response):
-            raise ExchangeError(self.id + ' ' + body)
+            raise ExchangeError(f'{self.id} {body}')
+        if 'result' not in response:
+            raise ExchangeError(f'{self.id} {body}')
 
     def request(self, path, api='public', method='GET', params={}, headers=None, body=None, config={}, context={}):
         response = self.fetch2(path, api, method, params, headers, body, config, context)
-        if method == 'GET':
-            return response
-        else:
-            return response['result'][0]
+        return response if method == 'GET' else response['result'][0]

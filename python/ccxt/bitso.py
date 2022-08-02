@@ -157,7 +157,7 @@ class bitso(Exchange):
         #     }
         markets = self.safe_value(response, 'payload')
         result = []
-        for i in range(0, len(markets)):
+        for i in range(len(markets)):
             market = markets[i]
             id = self.safe_string(market, 'book')
             baseId, quoteId = id.split('_')
@@ -165,7 +165,7 @@ class bitso(Exchange):
             quote = quoteId.upper()
             base = self.safe_currency_code(base)
             quote = self.safe_currency_code(quote)
-            symbol = base + '/' + quote
+            symbol = f'{base}/{quote}'
             limits = {
                 'amount': {
                     'min': self.safe_number(market, 'minimum_amount'),
@@ -201,7 +201,7 @@ class bitso(Exchange):
             }
             takerFees = []
             makerFees = []
-            for j in range(0, len(feeTiers)):
+            for j in range(len(feeTiers)):
                 tier = feeTiers[j]
                 volume = self.safe_number(tier, 'volume')
                 takerFee = self.safe_number(tier, 'taker')
@@ -265,7 +265,7 @@ class bitso(Exchange):
             'timestamp': None,
             'datetime': None,
         }
-        for i in range(0, len(balances)):
+        for i in range(len(balances)):
             balance = balances[i]
             currencyId = self.safe_string(balance, 'currency')
             code = self.safe_currency_code(currencyId)
@@ -296,9 +296,7 @@ class bitso(Exchange):
         timestamp = self.parse8601(self.safe_string(ticker, 'created_at'))
         vwap = self.safe_number(ticker, 'vwap')
         baseVolume = self.safe_number(ticker, 'volume')
-        quoteVolume = None
-        if baseVolume is not None and vwap is not None:
-            quoteVolume = baseVolume * vwap
+        quoteVolume = None if baseVolume is None or vwap is None else baseVolume * vwap
         last = self.safe_number(ticker, 'last')
         return {
             'symbol': symbol,
@@ -381,7 +379,10 @@ class bitso(Exchange):
         # warn the user with an exception if the user wants to filter
         # starting from since timestamp, but does not set the trade id with an extra 'marker' param
         if (since is not None) and not markerInParams:
-            raise ExchangeError(self.id + ' fetchMyTrades does not support fetching trades starting from a timestamp with the `since` argument, use the `marker` extra param to filter starting from an integer trade id')
+            raise ExchangeError(
+                f'{self.id} fetchMyTrades does not support fetching trades starting from a timestamp with the `since` argument, use the `marker` extra param to filter starting from an integer trade id'
+            )
+
         # convert it to an integer unconditionally
         if markerInParams:
             params = self.extend(params, {
@@ -473,7 +474,10 @@ class bitso(Exchange):
         # warn the user with an exception if the user wants to filter
         # starting from since timestamp, but does not set the trade id with an extra 'marker' param
         if (since is not None) and not markerInParams:
-            raise ExchangeError(self.id + ' fetchOpenOrders does not support fetching orders starting from a timestamp with the `since` argument, use the `marker` extra param to filter starting from an integer trade id')
+            raise ExchangeError(
+                f'{self.id} fetchOpenOrders does not support fetching orders starting from a timestamp with the `since` argument, use the `marker` extra param to filter starting from an integer trade id'
+            )
+
         # convert it to an integer unconditionally
         if markerInParams:
             params = self.extend(params, {
@@ -486,8 +490,7 @@ class bitso(Exchange):
             # 'marker': id,  # integer id to start from
         }
         response = self.privateGetOpenOrders(self.extend(request, params))
-        orders = self.parse_orders(response['payload'], market, since, limit)
-        return orders
+        return self.parse_orders(response['payload'], market, since, limit)
 
     def fetch_order(self, id, symbol=None, params={}):
         self.load_markets()
@@ -499,7 +502,7 @@ class bitso(Exchange):
             numOrders = len(response['payload'])
             if numOrders == 1:
                 return self.parse_order(payload[0])
-        raise OrderNotFound(self.id + ': The order ' + id + ' not found.')
+        raise OrderNotFound(f'{self.id}: The order {id} not found.')
 
     def fetch_order_trades(self, id, symbol=None, since=None, limit=None, params={}):
         self.load_markets()
@@ -542,15 +545,15 @@ class bitso(Exchange):
             'BCH': 'Bcash',
             'LTC': 'Litecoin',
         }
-        method = methods[code] if (code in methods) else None
+        method = methods.get(code)
         if method is None:
-            raise ExchangeError(self.id + ' not valid withdraw coin: ' + code)
+            raise ExchangeError(f'{self.id} not valid withdraw coin: {code}')
         request = {
             'amount': amount,
             'address': address,
             'destination_tag': tag,
         }
-        classMethod = 'privatePost' + method + 'Withdrawal'
+        classMethod = f'privatePost{method}Withdrawal'
         response = getattr(self, classMethod)(self.extend(request, params))
         return {
             'info': response,
@@ -558,26 +561,25 @@ class bitso(Exchange):
         }
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
-        endpoint = '/' + self.version + '/' + self.implode_params(path, params)
+        endpoint = f'/{self.version}/{self.implode_params(path, params)}'
         query = self.omit(params, self.extract_params(path))
-        if method == 'GET':
-            if query:
-                endpoint += '?' + self.urlencode(query)
+        if method == 'GET' and query:
+            endpoint += f'?{self.urlencode(query)}'
         url = self.urls['api'] + endpoint
         if api == 'private':
             self.check_required_credentials()
             nonce = str(self.nonce())
             request = ''.join([nonce, method, endpoint])
-            if method != 'GET':
-                if query:
-                    body = self.json(query)
-                    request += body
+            if method != 'GET' and query:
+                body = self.json(query)
+                request += body
             signature = self.hmac(self.encode(request), self.encode(self.secret))
-            auth = self.apiKey + ':' + nonce + ':' + signature
+            auth = f'{self.apiKey}:{nonce}:{signature}'
             headers = {
-                'Authorization': 'Bitso ' + auth,
+                'Authorization': f'Bitso {auth}',
                 'Content-Type': 'application/json',
             }
+
         return {'url': url, 'method': method, 'body': body, 'headers': headers}
 
     def handle_errors(self, httpCode, reason, url, method, headers, body, response, requestHeaders, requestBody):
@@ -589,12 +591,9 @@ class bitso(Exchange):
             #
             success = self.safe_value(response, 'success', False)
             if isinstance(success, basestring):
-                if (success == 'true') or (success == '1'):
-                    success = True
-                else:
-                    success = False
+                success = success in ['true', '1']
             if not success:
-                feedback = self.id + ' ' + self.json(response)
+                feedback = f'{self.id} {self.json(response)}'
                 error = self.safe_value(response, 'error')
                 if error is None:
                     raise ExchangeError(feedback)

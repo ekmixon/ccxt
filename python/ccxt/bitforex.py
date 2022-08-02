@@ -137,7 +137,7 @@ class bitforex(Exchange):
         response = self.publicGetApiV1MarketSymbols(params)
         data = response['data']
         result = []
-        for i in range(0, len(data)):
+        for i in range(len(data)):
             market = data[i]
             id = self.safe_string(market, 'symbol')
             symbolParts = id.split('-')
@@ -145,7 +145,7 @@ class bitforex(Exchange):
             quoteId = symbolParts[1]
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = base + '/' + quote
+            symbol = f'{base}/{quote}'
             active = True
             precision = {
                 'amount': self.safe_integer(market, 'amountPrecision'),
@@ -180,9 +180,7 @@ class bitforex(Exchange):
         return result
 
     def parse_trade(self, trade, market=None):
-        symbol = None
-        if market is not None:
-            symbol = market['symbol']
+        symbol = market['symbol'] if market is not None else None
         timestamp = self.safe_integer(trade, 'time')
         id = self.safe_string(trade, 'tid')
         orderId = None
@@ -225,7 +223,7 @@ class bitforex(Exchange):
         response = self.privatePostApiV1FundAllAccount(params)
         data = response['data']
         result = {'info': response}
-        for i in range(0, len(data)):
+        for i in range(len(data)):
             balance = data[i]
             currencyId = self.safe_string(balance, 'currency')
             code = self.safe_currency_code(currencyId)
@@ -334,7 +332,7 @@ class bitforex(Exchange):
             '3': 'canceled',
             '4': 'canceled',
         }
-        return statuses[status] if (status in statuses) else status
+        return statuses.get(status, status)
 
     def parse_side(self, sideId):
         if sideId == 1:
@@ -395,8 +393,7 @@ class bitforex(Exchange):
             'orderId': id,
         }
         response = self.privatePostApiV1TradeOrderInfo(self.extend(request, params))
-        order = self.parse_order(response['data'], market)
-        return order
+        return self.parse_order(response['data'], market)
 
     def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
         self.load_markets()
@@ -447,25 +444,24 @@ class bitforex(Exchange):
             request['symbol'] = self.market_id(symbol)
         results = self.privatePostApiV1TradeCancelOrder(self.extend(request, params))
         success = results['success']
-        returnVal = {'info': results, 'success': success}
-        return returnVal
+        return {'info': results, 'success': success}
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
         url = self.urls['api'] + '/' + self.implode_params(path, params)
         query = self.omit(params, self.extract_params(path))
         if api == 'public':
             if query:
-                url += '?' + self.urlencode(query)
+                url += f'?{self.urlencode(query)}'
         else:
             self.check_required_credentials()
             payload = self.urlencode({'accessKey': self.apiKey})
             query['nonce'] = self.milliseconds()
             if query:
-                payload += '&' + self.urlencode(self.keysort(query))
+                payload += f'&{self.urlencode(self.keysort(query))}'
             # message = '/' + 'api/' + self.version + '/' + path + '?' + payload
-            message = '/' + path + '?' + payload
+            message = f'/{path}?{payload}'
             signature = self.hmac(self.encode(message), self.encode(self.secret))
-            body = payload + '&signData=' + signature
+            body = f'{payload}&signData={signature}'
             headers = {
                 'Content-Type': 'application/x-www-form-urlencoded',
             }
@@ -474,11 +470,10 @@ class bitforex(Exchange):
     def handle_errors(self, code, reason, url, method, headers, body, response, requestHeaders, requestBody):
         if not isinstance(body, basestring):
             return  # fallback to default error handler
-        if (body[0] == '{') or (body[0] == '['):
-            feedback = self.id + ' ' + body
+        if body[0] in ['{', '[']:
+            feedback = f'{self.id} {body}'
             success = self.safe_value(response, 'success')
-            if success is not None:
-                if not success:
-                    code = self.safe_string(response, 'code')
-                    self.throw_exactly_matched_exception(self.exceptions, code, feedback)
-                    raise ExchangeError(feedback)
+            if success is not None and not success:
+                code = self.safe_string(response, 'code')
+                self.throw_exactly_matched_exception(self.exceptions, code, feedback)
+                raise ExchangeError(feedback)

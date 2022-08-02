@@ -391,8 +391,8 @@ class bitfinex(Exchange):
         fees = response['withdraw']
         withdraw = {}
         ids = list(fees.keys())
-        for i in range(0, len(ids)):
-            id = ids[i]
+        for id_ in ids:
+            id = id_
             code = self.safe_currency_code(id)
             withdraw[code] = self.safe_number(fees, id)
         return {
@@ -453,7 +453,7 @@ class bitfinex(Exchange):
         #     ]
         #
         result = []
-        for i in range(0, len(details)):
+        for i in range(len(details)):
             market = details[i]
             id = self.safe_string(market, 'pair')
             if not self.in_array(id, ids):
@@ -466,11 +466,11 @@ class bitfinex(Exchange):
                 baseId = parts[0]
                 quoteId = parts[1]
             else:
-                baseId = id[0:3]
+                baseId = id[:3]
                 quoteId = id[3:6]
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = base + '/' + quote
+            symbol = f'{base}/{quote}'
             precision = {
                 'price': self.safe_integer(market, 'price_precision'),
                 # https://docs.bitfinex.com/docs/introduction#amount-precision
@@ -485,15 +485,10 @@ class bitfinex(Exchange):
                     'min': self.parse_number(minAmountString),
                     'max': self.parse_number(maxAmountString),
                 },
-                'price': {
-                    'min': self.parse_number('1e-8'),
-                    'max': None,
-                },
+                'price': {'min': self.parse_number('1e-8'), 'max': None},
+                'cost': {'min': None, 'max': None},
             }
-            limits['cost'] = {
-                'min': None,
-                'max': None,
-            }
+
             margin = self.safe_value(market, 'margin')
             result.append({
                 'id': id,
@@ -532,7 +527,11 @@ class bitfinex(Exchange):
         accountType = self.safe_string(accountsByType, requestedType)
         if accountType is None:
             keys = list(accountsByType.keys())
-            raise ExchangeError(self.id + ' fetchBalance type parameter must be one of ' + ', '.join(keys))
+            raise ExchangeError(
+                f'{self.id} fetchBalance type parameter must be one of '
+                + ', '.join(keys)
+            )
+
         query = self.omit(params, 'type')
         response = self.privatePostBalances(query)
         #    [{type: 'deposit',
@@ -549,7 +548,7 @@ class bitfinex(Exchange):
         #        available: '0.0005'}],
         result = {'info': response}
         isDerivative = requestedType == 'derivatives'
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             balance = response[i]
             type = self.safe_string(balance, 'type')
             currencyId = self.safe_string_lower(balance, 'currency', '')
@@ -564,7 +563,7 @@ class bitfinex(Exchange):
                 # we need a workaround here so that the old BCH balance
                 # would not override the new BAB balance(BAB is unified to BCH)
                 # https://github.com/ccxt/ccxt/issues/4989
-                if not (code in result):
+                if code not in result:
                     account = self.account()
                     account['free'] = self.safe_string(balance, 'available')
                     account['total'] = self.safe_string(balance, 'amount')
@@ -579,11 +578,17 @@ class bitfinex(Exchange):
         fromId = self.safe_string(accountsByType, fromAccount)
         if fromId is None:
             keys = list(accountsByType.keys())
-            raise ExchangeError(self.id + ' transfer fromAccount must be one of ' + ', '.join(keys))
+            raise ExchangeError(
+                f'{self.id} transfer fromAccount must be one of ' + ', '.join(keys)
+            )
+
         toId = self.safe_string(accountsByType, toAccount)
         if toId is None:
             keys = list(accountsByType.keys())
-            raise ExchangeError(self.id + ' transfer toAccount must be one of ' + ', '.join(keys))
+            raise ExchangeError(
+                f'{self.id} transfer toAccount must be one of ' + ', '.join(keys)
+            )
+
         currency = self.currency(code)
         fromCurrencyId = self.convert_derivatives_id(currency['id'], fromAccount)
         toCurrencyId = self.convert_derivatives_id(currency['id'], toAccount)
@@ -606,11 +611,14 @@ class bitfinex(Exchange):
         status = self.safe_string(result, 'status')
         message = self.safe_string(result, 'message')
         if message is None:
-            raise ExchangeError(self.id + ' transfer failed')
+            raise ExchangeError(f'{self.id} transfer failed')
         # [{"status":"error","message":"Momentary balance check. Please wait few seconds and try the transfer again."}]
         if status == 'error':
-            self.throw_exactly_matched_exception(self.exceptions['exact'], message, self.id + ' ' + message)
-            raise ExchangeError(self.id + ' ' + message)
+            self.throw_exactly_matched_exception(
+                self.exceptions['exact'], message, f'{self.id} {message}'
+            )
+
+            raise ExchangeError(f'{self.id} {message}')
         return {
             'info': response,
             'status': status,
@@ -625,10 +633,10 @@ class bitfinex(Exchange):
     def convert_derivatives_id(self, currencyId, type):
         start = len(currencyId) - 2
         isDerivativeCode = currencyId[start:] == 'F0'
-        if (type != 'derivatives' and type != 'trading' and type != 'margin') and isDerivativeCode:
-            currencyId = currencyId[0:start]
+        if type not in ['derivatives', 'trading', 'margin'] and isDerivativeCode:
+            currencyId = currencyId[:start]
         elif type == 'derivatives' and not isDerivativeCode:
-            currencyId = currencyId + 'F0'
+            currencyId = f'{currencyId}F0'
         return currencyId
 
     def fetch_order_book(self, symbol, limit=None, params={}):
@@ -646,7 +654,7 @@ class bitfinex(Exchange):
         self.load_markets()
         response = self.publicGetTickers(params)
         result = {}
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             ticker = self.parse_ticker(response[i])
             symbol = ticker['symbol']
             result[symbol] = ticker
@@ -676,11 +684,11 @@ class bitfinex(Exchange):
                     market = self.markets_by_id[marketId]
                     symbol = market['symbol']
                 else:
-                    baseId = marketId[0:3]
+                    baseId = marketId[:3]
                     quoteId = marketId[3:6]
                     base = self.safe_currency_code(baseId)
                     quote = self.safe_currency_code(quoteId)
-                    symbol = base + '/' + quote
+                    symbol = f'{base}/{quote}'
         last = self.safe_number(ticker, 'last_price')
         return self.safe_ticker({
             'symbol': symbol,
@@ -755,7 +763,10 @@ class bitfinex(Exchange):
 
     def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchMyTrades() requires a `symbol` argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchMyTrades() requires a `symbol` argument'
+            )
+
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -884,9 +895,8 @@ class bitfinex(Exchange):
 
     def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
         self.load_markets()
-        if symbol is not None:
-            if not (symbol in self.markets):
-                raise ExchangeError(self.id + ' has no symbol ' + symbol)
+        if symbol is not None and symbol not in self.markets:
+            raise ExchangeError(f'{self.id} has no symbol {symbol}')
         response = self.privatePostOrders(params)
         orders = self.parse_orders(response, None, since, limit)
         if symbol is not None:
@@ -961,15 +971,14 @@ class bitfinex(Exchange):
         # todo rewrite for https://api-pub.bitfinex.com//v2/conf/pub:map:tx:method
         if code in self.options['currencyNames']:
             return self.options['currencyNames'][code]
-        raise NotSupported(self.id + ' ' + code + ' not supported for withdrawal')
+        raise NotSupported(f'{self.id} {code} not supported for withdrawal')
 
     def create_deposit_address(self, code, params={}):
         self.load_markets()
         request = {
             'renew': 1,
         }
-        response = self.fetch_deposit_address(code, self.extend(request, params))
-        return response
+        return self.fetch_deposit_address(code, self.extend(request, params))
 
     def fetch_deposit_address(self, code, params={}):
         self.load_markets()
@@ -1001,10 +1010,12 @@ class bitfinex(Exchange):
         currency = None
         if currencyId is None:
             if code is None:
-                raise ArgumentsRequired(self.id + ' fetchTransactions() requires a currency `code` argument or a `currency` parameter')
-            else:
-                currency = self.currency(code)
-                currencyId = currency['id']
+                raise ArgumentsRequired(
+                    f'{self.id} fetchTransactions() requires a currency `code` argument or a `currency` parameter'
+                )
+
+            currency = self.currency(code)
+            currencyId = currency['id']
         query['currency'] = currencyId
         if since is not None:
             query['since'] = int(since / 1000)
@@ -1125,8 +1136,11 @@ class bitfinex(Exchange):
         if id == 0:
             if errorMessage is not None:
                 ExceptionClass = self.exceptions['broad'][errorMessage]
-                raise ExceptionClass(self.id + ' ' + message)
-            raise ExchangeError(self.id + ' withdraw returned an id of zero: ' + self.json(response))
+                raise ExceptionClass(f'{self.id} {message}')
+            raise ExchangeError(
+                f'{self.id} withdraw returned an id of zero: {self.json(response)}'
+            )
+
         return {
             'info': response,
             'id': id,
@@ -1134,7 +1148,6 @@ class bitfinex(Exchange):
 
     def fetch_positions(self, symbols=None, params={}):
         self.load_markets()
-        response = self.privatePostPositions(params)
         #
         #     [
         #         {
@@ -1150,24 +1163,20 @@ class bitfinex(Exchange):
         #     ]
         #
         # todo unify parsePosition/parsePositions
-        return response
+        return self.privatePostPositions(params)
 
     def nonce(self):
         return self.milliseconds()
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
-        request = '/' + self.implode_params(path, params)
-        if api == 'v2':
-            request = '/' + api + request
-        else:
-            request = '/' + self.version + request
+        request = f'/{self.implode_params(path, params)}'
+        request = f'/{api}{request}' if api == 'v2' else f'/{self.version}{request}'
         query = self.omit(params, self.extract_params(path))
         url = self.urls['api'][api] + request
-        if (api == 'public') or (path.find('/hist') >= 0):
-            if query:
-                suffix = '?' + self.urlencode(query)
-                url += suffix
-                request += suffix
+        if ((api == 'public') or (path.find('/hist') >= 0)) and query:
+            suffix = f'?{self.urlencode(query)}'
+            url += suffix
+            request += suffix
         if api == 'private':
             self.check_required_credentials()
             nonce = self.nonce()
@@ -1190,10 +1199,9 @@ class bitfinex(Exchange):
     def handle_errors(self, code, reason, url, method, headers, body, response, requestHeaders, requestBody):
         if response is None:
             return
-        if code >= 400:
-            if body[0] == '{':
-                feedback = self.id + ' ' + body
-                message = self.safe_string_2(response, 'message', 'error')
-                self.throw_exactly_matched_exception(self.exceptions['exact'], message, feedback)
-                self.throw_broadly_matched_exception(self.exceptions['broad'], message, feedback)
-                raise ExchangeError(feedback)  # unknown message
+        if code >= 400 and body[0] == '{':
+            feedback = f'{self.id} {body}'
+            message = self.safe_string_2(response, 'message', 'error')
+            self.throw_exactly_matched_exception(self.exceptions['exact'], message, feedback)
+            self.throw_broadly_matched_exception(self.exceptions['broad'], message, feedback)
+            raise ExchangeError(feedback)  # unknown message

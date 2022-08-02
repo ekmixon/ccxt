@@ -8,13 +8,12 @@ import os
 import sys
 
 root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.append(root + '/python')
+sys.path.append(f'{root}/python')
 
 
 def sync_client(exchange):
     client = getattr(ccxt, exchange)()
-    tickers = client.fetch_tickers()
-    return tickers
+    return client.fetch_tickers()
 
 
 async def async_client(exchange):

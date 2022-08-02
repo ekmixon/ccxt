@@ -275,7 +275,7 @@ class bitpanda(Exchange):
         #     ]
         #
         result = {}
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             currency = response[i]
             id = self.safe_string(currency, 'code')
             code = self.safe_currency_code(id)
@@ -309,16 +309,16 @@ class bitpanda(Exchange):
         #     ]
         #
         result = []
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             market = response[i]
             baseAsset = self.safe_value(market, 'base', {})
             quoteAsset = self.safe_value(market, 'quote', {})
             baseId = self.safe_string(baseAsset, 'code')
             quoteId = self.safe_string(quoteAsset, 'code')
-            id = baseId + '_' + quoteId
+            id = f'{baseId}_{quoteId}'
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = base + '/' + quote
+            symbol = f'{base}/{quote}'
             precision = {
                 'amount': self.safe_integer(market, 'amount_precision'),
                 'price': self.safe_integer(market, 'market_precision'),
@@ -388,7 +388,7 @@ class bitpanda(Exchange):
         feeGroup = self.safe_value(feeGroupsById, feeGroupId, {})
         feeTiers = self.safe_value(feeGroup, 'fee_tiers')
         result = {}
-        for i in range(0, len(self.symbols)):
+        for i in range(len(self.symbols)):
             symbol = self.symbols[i]
             fee = {
                 'info': feeGroup,
@@ -400,7 +400,7 @@ class bitpanda(Exchange):
             }
             takerFees = []
             makerFees = []
-            for i in range(0, len(feeTiers)):
+            for i in range(len(feeTiers)):
                 tier = feeTiers[i]
                 volume = self.safe_number(tier, 'volume')
                 taker = self.safe_number(tier, 'taker_fee')
@@ -455,7 +455,7 @@ class bitpanda(Exchange):
         feeTiers = self.safe_value(response, 'fee_tiers')
         takerFees = []
         makerFees = []
-        for i in range(0, len(feeTiers)):
+        for i in range(len(feeTiers)):
             tier = feeTiers[i]
             volume = self.safe_number(tier, 'volume')
             taker = self.safe_number(tier, 'taker_fee')
@@ -575,7 +575,7 @@ class bitpanda(Exchange):
         #     ]
         #
         result = {}
-        for i in range(0, len(response)):
+        for i in range(len(response)):
             ticker = self.parse_ticker(response[i])
             symbol = ticker['symbol']
             result[symbol] = ticker
@@ -860,7 +860,7 @@ class bitpanda(Exchange):
         #
         balances = self.safe_value(response, 'balances', [])
         result = {'info': response}
-        for i in range(0, len(balances)):
+        for i in range(len(balances)):
             balance = balances[i]
             currencyId = self.safe_string(balance, 'currency_code')
             code = self.safe_currency_code(currencyId)
@@ -871,9 +871,7 @@ class bitpanda(Exchange):
         return self.parse_balance(result)
 
     def parse_deposit_address(self, depositAddress, currency=None):
-        code = None
-        if currency is not None:
-            code = currency['code']
+        code = currency['code'] if currency is not None else None
         address = self.safe_string(depositAddress, 'address')
         tag = self.safe_string(depositAddress, 'destination_tag')
         self.check_address(address)
@@ -1040,7 +1038,10 @@ class bitpanda(Exchange):
         if isFiat:
             payoutAccountId = self.safe_string(params, 'payout_account_id')
             if payoutAccountId is None:
-                raise ArgumentsRequired(self.id + ' withdraw() requires a payout_account_id param for fiat ' + code + ' withdrawals')
+                raise ArgumentsRequired(
+                    f'{self.id} withdraw() requires a payout_account_id param for fiat {code} withdrawals'
+                )
+
         else:
             recipient = {'address': address}
             if tag is not None:
@@ -1291,13 +1292,14 @@ class bitpanda(Exchange):
             # "is_post_only": False,  # limit orders only, optional
             # "trigger_price": "1234.5678"  # required for stop orders
         }
-        priceIsRequired = False
-        if uppercaseType == 'LIMIT' or uppercaseType == 'STOP':
-            priceIsRequired = True
+        priceIsRequired = uppercaseType in ['LIMIT', 'STOP']
         if uppercaseType == 'STOP':
             triggerPrice = self.safe_number(params, 'trigger_price')
             if triggerPrice is None:
-                raise ArgumentsRequired(self.id + ' createOrder() requires a trigger_price param for ' + type + ' orders')
+                raise ArgumentsRequired(
+                    f'{self.id} createOrder() requires a trigger_price param for {type} orders'
+                )
+
             request['trigger_price'] = self.price_to_precision(symbol, triggerPrice)
             params = self.omit(params, 'trigger_price')
         if priceIsRequired:
@@ -1335,11 +1337,10 @@ class bitpanda(Exchange):
             request['client_id'] = clientOrderId
         else:
             request['order_id'] = id
-        response = getattr(self, method)(self.extend(request, params))
         #
         # responds with an empty body
         #
-        return response
+        return getattr(self, method)(self.extend(request, params))
 
     def cancel_all_orders(self, symbol=None, params={}):
         self.load_markets()
@@ -1347,26 +1348,24 @@ class bitpanda(Exchange):
         if symbol is not None:
             market = self.market(symbol)
             request['instrument_code'] = market['id']
-        response = self.privateDeleteAccountOrders(self.extend(request, params))
         #
         #     [
         #         "a10e9bd1-8f72-4cfe-9f1b-7f1c8a9bd8ee"
         #     ]
         #
-        return response
+        return self.privateDeleteAccountOrders(self.extend(request, params))
 
     def cancel_orders(self, ids, symbol=None, params={}):
         self.load_markets()
         request = {
             'ids': ','.join(ids),
         }
-        response = self.privateDeleteAccountOrders(self.extend(request, params))
         #
         #     [
         #         "a10e9bd1-8f72-4cfe-9f1b-7f1c8a9bd8ee"
         #     ]
         #
-        return response
+        return self.privateDeleteAccountOrders(self.extend(request, params))
 
     def fetch_order(self, id, symbol=None, params={}):
         self.load_markets()
@@ -1570,9 +1569,7 @@ class bitpanda(Exchange):
         #     }
         #
         tradeHistory = self.safe_value(response, 'trade_history', [])
-        market = None
-        if symbol is not None:
-            market = self.market(symbol)
+        market = self.market(symbol) if symbol is not None else None
         return self.parse_trades(tradeHistory, market, since, limit)
 
     def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
@@ -1634,19 +1631,19 @@ class bitpanda(Exchange):
         query = self.omit(params, self.extract_params(path))
         if api == 'public':
             if query:
-                url += '?' + self.urlencode(query)
+                url += f'?{self.urlencode(query)}'
         elif api == 'private':
             self.check_required_credentials()
             headers = {
                 'Accept': 'application/json',
-                'Authorization': 'Bearer ' + self.apiKey,
+                'Authorization': f'Bearer {self.apiKey}',
             }
+
             if method == 'POST':
                 body = self.json(query)
                 headers['Content-Type'] = 'application/json'
-            else:
-                if query:
-                    url += '?' + self.urlencode(query)
+            elif query:
+                url += f'?{self.urlencode(query)}'
         return {'url': url, 'method': method, 'body': body, 'headers': headers}
 
     def handle_errors(self, code, reason, url, method, headers, body, response, requestHeaders, requestBody):
@@ -1659,7 +1656,7 @@ class bitpanda(Exchange):
         #
         message = self.safe_string(response, 'error')
         if message is not None:
-            feedback = self.id + ' ' + body
+            feedback = f'{self.id} {body}'
             self.throw_exactly_matched_exception(self.exceptions['exact'], message, feedback)
             self.throw_broadly_matched_exception(self.exceptions['broad'], message, feedback)
             raise ExchangeError(feedback)  # unknown message

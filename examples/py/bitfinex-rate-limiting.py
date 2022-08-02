@@ -4,7 +4,7 @@ import os
 import sys
 
 root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.append(root + '/python')
+sys.path.append(f'{root}/python')
 
 import ccxt  # noqa: E402
 
@@ -25,7 +25,7 @@ exchange = ccxt.bitfinex({
     # 'rateLimit': 1000,  # once every second, 60 times per minute – won't work, will throw DDoSProtection
 })
 
-for i in range(0, 100):
+for i in range(100):
     print('--------------------------------------------------------------------')
     print(i)
     print('sent:', exchange.iso8601(exchange.milliseconds()))

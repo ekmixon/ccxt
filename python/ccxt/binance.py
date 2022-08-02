@@ -876,7 +876,8 @@ class binance(Exchange):
             return None
         response = self.sapiGetCapitalConfigGetall(params)
         result = {}
-        for i in range(0, len(response)):
+        precision = None
+        for i in range(len(response)):
             #
             #     {
             #         coin: 'LINK',
@@ -959,13 +960,12 @@ class binance(Exchange):
             id = self.safe_string(entry, 'coin')
             name = self.safe_string(entry, 'name')
             code = self.safe_currency_code(id)
-            precision = None
             isWithdrawEnabled = True
             isDepositEnabled = True
             networkList = self.safe_value(entry, 'networkList', [])
             fees = {}
             fee = None
-            for j in range(0, len(networkList)):
+            for j in range(len(networkList)):
                 networkItem = networkList[j]
                 network = self.safe_string(networkItem, 'network')
                 # name = self.safe_string(networkItem, 'name')
@@ -998,13 +998,13 @@ class binance(Exchange):
         defaultType = self.safe_string_2(self.options, 'fetchMarkets', 'defaultType', 'spot')
         type = self.safe_string(params, 'type', defaultType)
         query = self.omit(params, 'type')
-        if (type != 'spot') and (type != 'future') and (type != 'margin') and (type != 'delivery'):
+        if type not in ['spot', 'future', 'margin', 'delivery']:
             raise ExchangeError(self.id + " does not support '" + type + "' type, set exchange.options['defaultType'] to 'spot', 'margin', 'delivery' or 'future'")  # eslint-disable-line quotes
         method = 'publicGetExchangeInfo'
-        if type == 'future':
-            method = 'fapiPublicGetExchangeInfo'
-        elif type == 'delivery':
+        if type == 'delivery':
             method = 'dapiPublicGetExchangeInfo'
+        elif type == 'future':
+            method = 'fapiPublicGetExchangeInfo'
         response = getattr(self, method)(query)
         #
         # spot / margin
@@ -1156,7 +1156,7 @@ class binance(Exchange):
             self.load_time_difference()
         markets = self.safe_value(response, 'symbols', [])
         result = []
-        for i in range(0, len(markets)):
+        for i in range(len(markets)):
             market = markets[i]
             spot = (type == 'spot')
             future = (type == 'future')
@@ -1175,7 +1175,7 @@ class binance(Exchange):
                 symbol = id
                 expiry = self.safe_integer(market, 'deliveryDate')
             else:
-                symbol = base + '/' + quote
+                symbol = f'{base}/{quote}'
             filters = self.safe_value(market, 'filters', [])
             filtersByType = self.index_by(filters, 'filterType')
             precision = {
@@ -1471,10 +1471,10 @@ class binance(Exchange):
             'info': response,
         }
         timestamp = None
-        if (type == 'spot') or (type == 'margin'):
+        if type in ['spot', 'margin']:
             timestamp = self.safe_integer(response, 'updateTime')
             balances = self.safe_value_2(response, 'balances', 'userAssets', [])
-            for i in range(0, len(balances)):
+            for i in range(len(balances)):
                 balance = balances[i]
                 currencyId = self.safe_string(balance, 'asset')
                 code = self.safe_currency_code(currencyId)
@@ -1484,7 +1484,7 @@ class binance(Exchange):
                 result[code] = account
         elif type == 'savings':
             positionAmountVos = self.safe_value(response, 'positionAmountVos')
-            for i in range(0, len(positionAmountVos)):
+            for i in range(len(positionAmountVos)):
                 entry = positionAmountVos[i]
                 currencyId = self.safe_string(entry, 'asset')
                 code = self.safe_currency_code(currencyId)
@@ -1494,7 +1494,7 @@ class binance(Exchange):
                 account['used'] = usedAndTotal
                 result[code] = account
         elif type == 'pay':
-            for i in range(0, len(response)):
+            for i in range(len(response)):
                 entry = response[i]
                 account = self.account()
                 currencyId = self.safe_string(entry, 'asset')
@@ -1509,7 +1509,7 @@ class binance(Exchange):
             balances = response
             if not isinstance(response, list):
                 balances = self.safe_value(response, 'assets', [])
-            for i in range(0, len(balances)):
+            for i in range(len(balances)):
                 balance = balances[i]
                 currencyId = self.safe_string(balance, 'asset')
                 code = self.safe_currency_code(currencyId)
@@ -1913,9 +1913,8 @@ class binance(Exchange):
             side = 'sell' if trade['isBuyerMaker'] else 'buy'
         elif 'side' in trade:
             side = self.safe_string_lower(trade, 'side')
-        else:
-            if 'isBuyer' in trade:
-                side = 'buy' if trade['isBuyer'] else 'sell'  # self is a True side
+        elif 'isBuyer' in trade:
+            side = 'buy' if trade['isBuyer'] else 'sell'  # self is a True side
         fee = None
         if 'commission' in trade:
             fee = {

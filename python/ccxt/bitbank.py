@@ -143,14 +143,14 @@ class bitbank(Exchange):
         data = self.safe_value(response, 'data')
         pairs = self.safe_value(data, 'pairs', [])
         result = []
-        for i in range(0, len(pairs)):
+        for i in range(len(pairs)):
             entry = pairs[i]
             id = self.safe_string(entry, 'name')
             baseId = self.safe_string(entry, 'base_asset')
             quoteId = self.safe_string(entry, 'quote_asset')
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = base + '/' + quote
+            symbol = f'{base}/{quote}'
             maker = self.safe_number(entry, 'maker_fee_rate_quote')
             taker = self.safe_number(entry, 'taker_fee_rate_quote')
             pricePrecisionString = self.safe_string(entry, 'price_digits')
@@ -253,13 +253,16 @@ class bitbank(Exchange):
         cost = self.parse_number(Precise.string_mul(priceString, amountString))
         id = self.safe_string_2(trade, 'transaction_id', 'trade_id')
         takerOrMaker = self.safe_string(trade, 'maker_taker')
-        fee = None
         feeCost = self.safe_number(trade, 'fee_amount_quote')
-        if feeCost is not None:
-            fee = {
+        fee = (
+            None
+            if feeCost is None
+            else {
                 'currency': feeCurrency,
                 'cost': feeCost,
             }
+        )
+
         orderId = self.safe_string(trade, 'order_id')
         type = self.safe_string(trade, 'type')
         side = self.safe_string(trade, 'side')
@@ -389,7 +392,7 @@ class bitbank(Exchange):
         }
         data = self.safe_value(response, 'data', {})
         assets = self.safe_value(data, 'assets', [])
-        for i in range(0, len(assets)):
+        for i in range(len(assets)):
             balance = assets[i]
             currencyId = self.safe_string(balance, 'asset')
             code = self.safe_currency_code(currencyId)
@@ -413,11 +416,9 @@ class bitbank(Exchange):
     def parse_order(self, order, market=None):
         id = self.safe_string(order, 'order_id')
         marketId = self.safe_string(order, 'pair')
-        symbol = None
         if marketId and not market and (marketId in self.markets_by_id):
             market = self.markets_by_id[marketId]
-        if market is not None:
-            symbol = market['symbol']
+        symbol = market['symbol'] if market is not None else None
         timestamp = self.safe_integer(order, 'ordered_at')
         price = self.safe_number(order, 'price')
         amount = self.safe_number(order, 'start_amount')
@@ -474,8 +475,7 @@ class bitbank(Exchange):
             'pair': market['id'],
         }
         response = self.privatePostUserSpotCancelOrder(self.extend(request, params))
-        data = self.safe_value(response, 'data')
-        return data
+        return self.safe_value(response, 'data')
 
     def fetch_order(self, id, symbol=None, params={}):
         self.load_markets()
@@ -505,9 +505,7 @@ class bitbank(Exchange):
 
     def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         self.load_markets()
-        market = None
-        if symbol is not None:
-            market = self.market(symbol)
+        market = self.market(symbol) if symbol is not None else None
         request = {}
         if market is not None:
             request['pair'] = market['id']
@@ -541,8 +539,8 @@ class bitbank(Exchange):
 
     def withdraw(self, code, amount, address, tag=None, params={}):
         tag, params = self.handle_withdraw_tag_and_params(tag, params)
-        if not ('uuid' in params):
-            raise ExchangeError(self.id + ' uuid is required for withdrawal')
+        if 'uuid' not in params:
+            raise ExchangeError(f'{self.id} uuid is required for withdrawal')
         self.load_markets()
         currency = self.currency(code)
         request = {
@@ -563,24 +561,24 @@ class bitbank(Exchange):
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
         query = self.omit(params, self.extract_params(path))
         url = self.implode_hostname(self.urls['api'][api]) + '/'
-        if (api == 'public') or (api == 'markets'):
+        if api in ['public', 'markets']:
             url += self.implode_params(path, params)
             if query:
-                url += '?' + self.urlencode(query)
+                url += f'?{self.urlencode(query)}'
         else:
             self.check_required_credentials()
             nonce = str(self.nonce())
             auth = nonce
-            url += self.version + '/' + self.implode_params(path, params)
+            url += f'{self.version}/{self.implode_params(path, params)}'
             if method == 'POST':
                 body = self.json(query)
                 auth += body
             else:
-                auth += '/' + self.version + '/' + path
+                auth += f'/{self.version}/{path}'
                 if query:
                     query = self.urlencode(query)
-                    url += '?' + query
-                    auth += '?' + query
+                    url += f'?{query}'
+                    auth += f'?{query}'
             headers = {
                 'Content-Type': 'application/json',
                 'ACCESS-KEY': self.apiKey,
@@ -664,4 +662,4 @@ class bitbank(Exchange):
             if ErrorClass is not None:
                 raise ErrorClass(message)
             else:
-                raise ExchangeError(self.id + ' ' + self.json(response))
+                raise ExchangeError(f'{self.id} {self.json(response)}')
